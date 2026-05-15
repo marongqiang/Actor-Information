@@ -51,7 +51,7 @@ pub fn get_movies_paginated(
 
     // favorites_only: only show movies in groups with type='favorite'
     if favorites_only == Some(true) {
-        where_clauses.push("file_id IN (SELECT movie_id FROM movie_groups mg JOIN groups g ON mg.group_id = g.id WHERE g.type = 'favorite')".to_string());
+        where_clauses.push("m.file_id IN (SELECT movie_id FROM movie_groups mg JOIN groups g ON mg.group_id = g.id WHERE g.type = 'favorite')".to_string());
     }
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
@@ -74,15 +74,15 @@ pub fn get_movies_paginated(
     if let Some(gid) = group_id {
         param_values.push(Box::new(gid));
         where_clauses.push(format!(
-            "file_id IN (SELECT movie_id FROM movie_groups WHERE group_id = ?{})",
+            "m.file_id IN (SELECT movie_id FROM movie_groups WHERE group_id = ?{})",
             param_values.len()
         ));
     }
     if let Some(hidden) = is_hidden {
         param_values.push(Box::new(hidden as i32));
-        where_clauses.push(format!("is_hidden = ?{}", param_values.len()));
+        where_clauses.push(format!("m.is_hidden = ?{}", param_values.len()));
     } else {
-        where_clauses.push("is_hidden = 0".to_string());
+        where_clauses.push("m.is_hidden = 0".to_string());
     }
 
     let where_sql = where_clauses.join(" AND ");
