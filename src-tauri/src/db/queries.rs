@@ -96,7 +96,7 @@ pub fn get_movies_paginated(
     };
 
     // Count total
-    let count_sql = format!("SELECT COUNT(*) FROM movies WHERE {}", where_sql);
+    let count_sql = format!("SELECT COUNT(*) FROM movies m WHERE {}", where_sql);
     let total: i64 = {
         let mut stmt = conn.prepare(&count_sql)?;
         let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
