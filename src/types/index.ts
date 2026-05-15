@@ -53,6 +53,29 @@ export interface ActressItem {
   cup: string | null;
   letter: string;
   movie_count?: number;
+  local_folder_name?: string | null;
+  is_pending?: boolean;
+  source?: string | null;
+}
+
+export interface MergeOptions {
+  mergeFolders: boolean;
+  conflictPolicy?: 'rename' | 'skip' | 'overwrite';
+  dryRun?: boolean;
+}
+
+export interface MergeResult {
+  success: boolean;
+  movedFiles: string[];
+  conflicts: string[];
+  renamedFiles?: Array<{ from: string; to: string }>;
+  error?: string;
+}
+
+export interface DuplicatePair {
+  id1: number;
+  id2: number;
+  similarity: number;
 }
 
 export interface ActressGroupItem {

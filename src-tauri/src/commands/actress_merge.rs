@@ -1,7 +1,7 @@
 use crate::db::{self, queries};
-use crate::services::actress_sync;
+use crate::services::{actress_folder_manager, actress_sync};
 use crate::utils::error::CommandResult;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 pub struct ActressItem {
@@ -16,29 +16,9 @@ pub struct ActressItem {
     pub cup: Option<String>,
     pub letter: Option<String>,
     pub movie_count: i64,
-}
-
-impl From<queries::ActressRow> for ActressItem {
-    fn from(row: queries::ActressRow) -> Self {
-        Self {
-            id: row.id,
-            name: row.name,
-            avatar_local: row.avatar_local,
-            debut_year: row.debut_year,
-            height: row.height,
-            bust: row.bust,
-            waist: row.waist,
-            hip: row.hip,
-            cup: row.cup,
-            letter: row.letter,
-            movie_count: row.movie_count,
-        }
-    }
-}
-
-#[tauri::command]
-pub async fn sync_actress_data() -> Result<(), crate::utils::error::CommandError> {
-    actress_sync::sync_actress_data().await
+    pub local_folder_name: Option<String>,
+    pub is_pending: bool,
+    pub source: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -47,20 +27,38 @@ pub struct ActressByLetter {
     pub actresses: Vec<ActressItem>,
 }
 
+#[derive(Serialize)]
+pub struct PaginatedActress {
+    pub list: Vec<ActressItem>,
+    pub total: i64,
+}
+
+// ─── Sync ───
+
+#[tauri::command]
+pub async fn sync_actress_data() -> Result<(), crate::utils::error::CommandError> {
+    actress_sync::sync_actress_data().await
+}
+
+// ─── Query ───
+
 #[tauri::command]
 pub fn get_actresses_by_letter() -> Result<Vec<ActressByLetter>, crate::utils::error::CommandError> {
     db::with_db(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT id, name, avatar_local, debut_year, height, bust, waist, hip, cup, letter,
-                    (SELECT COUNT(*) FROM movie_actors ma JOIN actors a ON ma.actor_id = a.id WHERE a.name = av_actors.name)
-             FROM av_actors ORDER BY letter, name"
+            "SELECT a.id, a.name, a.avatar_local, a.debut_year, a.height, a.bust, a.waist, a.hip, a.cup, a.letter,
+                    (SELECT COUNT(*) FROM movie_actors ma JOIN actors act ON ma.actor_id = act.id WHERE act.name = a.name),
+                    a.local_folder_name, a.is_pending, a.source
+             FROM av_actors a ORDER BY a.letter, a.name"
         )?;
         let rows = stmt.query_map([], |row| {
-            Ok(queries::ActressRow {
+            Ok(ActressItem {
                 id: row.get(0)?, name: row.get(1)?, avatar_local: row.get(2)?,
                 debut_year: row.get(3)?, height: row.get(4)?, bust: row.get(5)?,
                 waist: row.get(6)?, hip: row.get(7)?, cup: row.get(8)?,
                 letter: row.get(9)?, movie_count: row.get(10)?,
+                local_folder_name: row.get(11)?, is_pending: row.get::<_, i32>(12)? != 0,
+                source: row.get(13)?,
             })
         })?.filter_map(|r| r.ok());
 
@@ -81,24 +79,15 @@ pub fn get_actresses_by_letter() -> Result<Vec<ActressByLetter>, crate::utils::e
                 }
                 current_letter = first_char;
             }
-            current_actresses.push(ActressItem::from(row));
+            current_actresses.push(row);
         }
 
         if !current_actresses.is_empty() {
-            letters.push(ActressByLetter {
-                letter: current_letter,
-                actresses: current_actresses,
-            });
+            letters.push(ActressByLetter { letter: current_letter, actresses: current_actresses });
         }
 
         Ok(letters)
     })
-}
-
-#[derive(Serialize)]
-pub struct PaginatedActress {
-    pub list: Vec<ActressItem>,
-    pub total: i64,
 }
 
 #[tauri::command]
@@ -108,24 +97,90 @@ pub fn get_actresses_paginated(
     search: Option<String>,
     sort_field: Option<String>,
     sort_order: Option<String>,
+    include_pending: Option<bool>,
 ) -> Result<PaginatedActress, crate::utils::error::CommandError> {
+    let include = include_pending.unwrap_or(true);
     db::with_db(|conn| {
-        let (rows, total) = queries::get_actresses_paginated(conn, page, page_size, search.as_deref())?;
-        let list: Vec<ActressItem> = rows.into_iter().map(ActressItem::from).collect();
-        Ok(PaginatedActress { list, total })
+        let base_where = if !include { "WHERE a.is_pending = 0" } else { "" };
+        let (search_clause, search_param) = if let Some(ref s) = search {
+            if !s.is_empty() {
+                (format!("{} {} AND (a.name LIKE ?1 OR EXISTS (SELECT 1 FROM actress_aliases al WHERE al.actress_id = a.id AND al.alias_name LIKE ?1))",
+                    if base_where.is_empty() { "WHERE" } else { &base_where }, if base_where.is_empty() { "" } else { "AND" }),
+                 Some(format!("%{}%", s)))
+            } else {
+                (base_where.to_string(), None)
+            }
+        } else {
+            (base_where.to_string(), None)
+        };
+
+        let count_sql = format!(
+            "SELECT COUNT(*) FROM av_actors a {}",
+            if search_clause.is_empty() { "".into() } else { search_clause.clone() }
+        );
+        let total: i64 = if let Some(ref p) = search_param {
+            conn.query_row(&count_sql, [p], |row| row.get(0))?
+        } else {
+            conn.query_row(&count_sql, [], |row| row.get(0))?
+        };
+
+        let offset = (page - 1) * page_size;
+        let query_sql = format!(
+            "SELECT a.id, a.name, a.avatar_local, a.debut_year, a.height, a.bust, a.waist, a.hip, a.cup, a.letter,
+                    (SELECT COUNT(*) FROM movie_actors ma JOIN actors act ON ma.actor_id = act.id WHERE act.name = a.name),
+                    a.local_folder_name, a.is_pending, a.source
+             FROM av_actors a {} ORDER BY a.name LIMIT ?{} OFFSET ?{}",
+            search_clause,
+            if search_param.is_some() { 2 } else { 1 },
+            if search_param.is_some() { 3 } else { 2 },
+        );
+
+        let mut stmt = conn.prepare(&query_sql)?;
+        let rows: Vec<ActressItem> = if let Some(ref p) = search_param {
+            stmt.query_map(rusqlite::params![p, page_size, offset], |row| {
+                Ok(ActressItem {
+                    id: row.get(0)?, name: row.get(1)?, avatar_local: row.get(2)?,
+                    debut_year: row.get(3)?, height: row.get(4)?, bust: row.get(5)?,
+                    waist: row.get(6)?, hip: row.get(7)?, cup: row.get(8)?,
+                    letter: row.get(9)?, movie_count: row.get(10)?,
+                    local_folder_name: row.get(11)?, is_pending: row.get::<_, i32>(12)? != 0,
+                    source: row.get(13)?,
+                })
+            })?.filter_map(|r| r.ok()).collect()
+        } else {
+            stmt.query_map(rusqlite::params![page_size, offset], |row| {
+                Ok(ActressItem {
+                    id: row.get(0)?, name: row.get(1)?, avatar_local: row.get(2)?,
+                    debut_year: row.get(3)?, height: row.get(4)?, bust: row.get(5)?,
+                    waist: row.get(6)?, hip: row.get(7)?, cup: row.get(8)?,
+                    letter: row.get(9)?, movie_count: row.get(10)?,
+                    local_folder_name: row.get(11)?, is_pending: row.get::<_, i32>(12)? != 0,
+                    source: row.get(13)?,
+                })
+            })?.filter_map(|r| r.ok()).collect()
+        };
+
+        Ok(PaginatedActress { list: rows, total })
     })
 }
 
 #[tauri::command]
 pub fn find_actress(name: String) -> Result<Option<ActressItem>, crate::utils::error::CommandError> {
-    actress_sync::find_actress(&name).map(|opt| opt.map(ActressItem::from))
+    actress_sync::find_actress(&name).map(|opt| {
+        opt.map(|row| ActressItem {
+            id: row.id, name: row.name, avatar_local: row.avatar_local,
+            debut_year: row.debut_year, height: row.height, bust: row.bust,
+            waist: row.waist, hip: row.hip, cup: row.cup, letter: row.letter,
+            movie_count: row.movie_count,
+            local_folder_name: None, is_pending: false, source: None,
+        })
+    })
 }
 
+// ─── CRUD ───
+
 #[tauri::command]
-pub fn update_actress(
-    id: i64,
-    data: serde_json::Value,
-) -> Result<(), crate::utils::error::CommandError> {
+pub fn update_actress(id: i64, data: serde_json::Value) -> Result<(), crate::utils::error::CommandError> {
     db::with_db(|conn| {
         if let Some(name) = data.get("name").and_then(|v| v.as_str()) {
             conn.execute("UPDATE av_actors SET name = ?1 WHERE id = ?2", rusqlite::params![name, id])?;
@@ -148,6 +203,9 @@ pub fn update_actress(
         if let Some(cup) = data.get("cup").and_then(|v| v.as_str()) {
             conn.execute("UPDATE av_actors SET cup = ?1 WHERE id = ?2", rusqlite::params![cup, id])?;
         }
+        if let Some(src) = data.get("source").and_then(|v| v.as_str()) {
+            conn.execute("UPDATE av_actors SET source = ?1 WHERE id = ?2", rusqlite::params![src, id])?;
+        }
         Ok(())
     })
 }
@@ -167,7 +225,49 @@ pub fn add_actress_alias(actress_id: i64, alias: String) -> Result<(), crate::ut
     db::with_db(|conn| queries::add_actress_alias(conn, actress_id, &alias))
 }
 
+// ─── Local Folder Commands (new in 1.2.0) ───
+
 #[tauri::command]
-pub fn merge_actresses(source_id: i64, target_id: i64) -> Result<(), crate::utils::error::CommandError> {
-    actress_sync::merge_actresses(source_id, target_id)
+pub fn scan_local_actress_folder(folder_path: Option<String>) -> Result<actress_folder_manager::ScanResult, crate::utils::error::CommandError> {
+    actress_folder_manager::scan_local_actress_folder(folder_path)
+}
+
+#[tauri::command]
+pub fn refresh_actress_avatar(actress_id: i64) -> Result<(), crate::utils::error::CommandError> {
+    actress_folder_manager::refresh_actress_avatar(actress_id)
+}
+
+#[tauri::command]
+pub fn confirm_actor(actor_id: i64, accepted: bool) -> Result<(), crate::utils::error::CommandError> {
+    actress_folder_manager::confirm_actor(actor_id, accepted)
+}
+
+#[tauri::command]
+pub fn update_actor_local_folder(actor_id: i64, folder_path: Option<String>) -> Result<(), crate::utils::error::CommandError> {
+    actress_folder_manager::update_actor_local_folder(actor_id, folder_path)
+}
+
+#[tauri::command]
+pub fn rename_actor_and_folder(actor_id: i64, new_name: String, rename_folder: bool) -> Result<actress_folder_manager::RenameResult, crate::utils::error::CommandError> {
+    actress_folder_manager::rename_actor_and_folder(actor_id, &new_name, rename_folder)
+}
+
+#[tauri::command]
+pub fn merge_actresses(source_id: i64, target_id: i64, options: actress_folder_manager::MergeOptions) -> Result<actress_folder_manager::MergeResult, crate::utils::error::CommandError> {
+    actress_folder_manager::merge_actresses(source_id, target_id, options)
+}
+
+#[tauri::command]
+pub fn detect_duplicate_actresses(threshold: Option<f64>) -> Result<Vec<actress_folder_manager::DuplicatePair>, crate::utils::error::CommandError> {
+    actress_folder_manager::detect_duplicate_actresses(threshold)
+}
+
+#[tauri::command]
+pub fn get_actress_local_folder(actress_id: i64) -> Result<Option<String>, crate::utils::error::CommandError> {
+    actress_folder_manager::get_actress_local_folder(actress_id)
+}
+
+#[tauri::command]
+pub fn sync_actress_with_local_folder(actress_id: i64) -> Result<(), crate::utils::error::CommandError> {
+    actress_folder_manager::sync_actress_with_local_folder(actress_id)
 }

@@ -39,7 +39,8 @@ pub fn get_data_dir() -> PathBuf {
 fn run_migrations(conn: &Connection) {
     let migrations = vec![
         ("v1", include_str!("migrations/v1.sql")),
-        ("v1.1", include_str!("migrations/v1.1.sql")),
+        ("v2", include_str!("migrations/v2.sql")),
+        ("v3", include_str!("migrations/v3.sql")),
     ];
 
     conn.execute(
@@ -80,7 +81,7 @@ fn seed_config(conn: &Connection) {
         .as_secs() as i64;
 
     let defaults = vec![
-        ("db_version", "2"),
+        ("db_version", "3"),
         ("scan_depth", "5"),
         ("cache_max_size", "2147483648"),
         ("theme", "dark"),
@@ -96,6 +97,13 @@ fn seed_config(conn: &Connection) {
         ("use_system_credential", "0"),
         ("auto_resume_tasks", "1"),
         ("playback_refresh_interval", "240"),
+        ("local_actor_base_dir", r"D:\Media Library\Actor Information\picture"),
+        ("auto_create_actors_from_scrape", "1"),
+        ("actor_pending_review", "1"),
+        ("allow_app_rename_actor_folders", "0"),
+        ("actor_merge_auto_merge_folders", "1"),
+        ("actor_merge_file_naming_pattern", "{name}_{index}{ext}"),
+        ("actor_merge_dry_run", "1"),
     ];
 
     for (key, value) in defaults {

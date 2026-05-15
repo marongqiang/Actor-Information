@@ -76,6 +76,36 @@
     </div>
 
     <div class="section">
+      <h3>演员管理</h3>
+      <el-form label-width="180px">
+        <el-form-item label="演员文件夹路径">
+          <el-input v-model="actorBaseDir" placeholder="D:\Media Library\Actor Information\picture" style="width: 400px;" />
+        </el-form-item>
+        <el-form-item label="刮削后自动创建演员">
+          <el-switch v-model="autoCreateActors" />
+        </el-form-item>
+        <el-form-item label="新增演员待审核">
+          <el-switch v-model="actorPendingReview" />
+        </el-form-item>
+        <el-form-item label="允许重命名演员文件夹">
+          <el-switch v-model="allowRenameFolder" />
+        </el-form-item>
+        <el-form-item label="合并时自动合并文件夹">
+          <el-switch v-model="mergeAutoFolders" />
+        </el-form-item>
+        <el-form-item label="合并文件命名模式">
+          <el-input v-model="mergeFilePattern" style="width: 200px;" />
+        </el-form-item>
+        <el-form-item label="合并默认模拟运行">
+          <el-switch v-model="mergeDryRun" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="saveActorSettings">保存演员设置</el-button>
+        </el-form-item>
+      </el-form>
+    </div>
+
+    <div class="section">
       <h3>数据管理</h3>
       <el-button @click="exportList">导出影片列表</el-button>
       <el-button type="danger" @click="clearCache">清除图片缓存</el-button>
@@ -103,6 +133,15 @@ const privacyTitle = ref('智能网盘影视库')
 const externalPlayer = ref('')
 const refreshInterval = ref(240)
 const autoStart = ref(false)
+
+// Actor folder settings (1.2.0)
+const actorBaseDir = ref('')
+const autoCreateActors = ref(true)
+const actorPendingReview = ref(true)
+const allowRenameFolder = ref(false)
+const mergeAutoFolders = ref(true)
+const mergeFilePattern = ref('{name}_{index}{ext}')
+const mergeDryRun = ref(true)
 
 async function startLogin() {
   loginLoading.value = true
@@ -165,6 +204,17 @@ async function exportList() {
   ElMessage.success('已导出到: ' + path)
 }
 
+async function saveActorSettings() {
+  await invoke('set_config', { key: 'local_actor_base_dir', value: actorBaseDir.value })
+  await invoke('set_config', { key: 'auto_create_actors_from_scrape', value: String(autoCreateActors.value) })
+  await invoke('set_config', { key: 'actor_pending_review', value: String(actorPendingReview.value) })
+  await invoke('set_config', { key: 'allow_app_rename_actor_folders', value: String(allowRenameFolder.value) })
+  await invoke('set_config', { key: 'actor_merge_auto_merge_folders', value: String(mergeAutoFolders.value) })
+  await invoke('set_config', { key: 'actor_merge_file_naming_pattern', value: mergeFilePattern.value })
+  await invoke('set_config', { key: 'actor_merge_dry_run', value: String(mergeDryRun.value) })
+  ElMessage.success('演员设置已保存')
+}
+
 async function clearCache() {
   ElMessage.info('缓存清理功能待实现')
 }
@@ -182,6 +232,15 @@ onMounted(async () => {
     if (interval) refreshInterval.value = parseInt(interval)
     const auto: string | null = await invoke('get_config', { key: 'auto_start' })
     autoStart.value = auto === 'true'
+
+    // Load actor settings
+    actorBaseDir.value = (await invoke('get_config', { key: 'local_actor_base_dir' }) as string) || ''
+    autoCreateActors.value = ((await invoke('get_config', { key: 'auto_create_actors_from_scrape' }) as string) || '1') === '1'
+    actorPendingReview.value = ((await invoke('get_config', { key: 'actor_pending_review' }) as string) || '1') === '1'
+    allowRenameFolder.value = ((await invoke('get_config', { key: 'allow_app_rename_actor_folders' }) as string) || '0') === '1'
+    mergeAutoFolders.value = ((await invoke('get_config', { key: 'actor_merge_auto_merge_folders' }) as string) || '1') === '1'
+    mergeFilePattern.value = (await invoke('get_config', { key: 'actor_merge_file_naming_pattern' }) as string) || '{name}_{index}{ext}'
+    mergeDryRun.value = ((await invoke('get_config', { key: 'actor_merge_dry_run' }) as string) || '1') === '1'
   } catch { /* config may not exist yet */ }
 })
 </script>

@@ -1,26 +1,49 @@
 use crate::db;
 use crate::utils::error::CommandResult;
 
-/// Sync actress data from Gfriends repository or similar source.
-/// This is a placeholder that sets up the basic actress data structure.
+/// Sync actress data: first scan local folders, then sync from movie actors.
+/// Local folder actors take priority, new scraped actors are marked pending.
 pub async fn sync_actress_data() -> CommandResult<()> {
     log::info!("开始同步演员数据...");
 
-    // Sync from movie actors table to av_actors
+    // 1. Scan local folders first (priority)
+    match super::actress_folder_manager::scan_local_actress_folder(None) {
+        Ok(result) => {
+            log::info!("本地文件夹扫描完成: 新增 {} / 总计 {}", result.added, result.total);
+        }
+        Err(e) => {
+            log::warn!("本地文件夹扫描失败（可能目录不存在）: {}", e);
+        }
+    }
+
+    // 2. Sync from movie actors table to av_actors
     db::with_db(|conn| {
         // Import actors from movies into av_actors if they don't exist
+        // New actors from scrape are marked as pending
         conn.execute(
-            "INSERT OR IGNORE INTO av_actors (name, letter)
-             SELECT DISTINCT a.name, SUBSTR(UPPER(a.name), 1, 1)
+            "INSERT OR IGNORE INTO av_actors (name, letter, is_pending, source)
+             SELECT DISTINCT a.name, SUBSTR(UPPER(a.name), 1, 1), 1, 'scrape'
              FROM actors a
              WHERE a.name NOT IN (SELECT name FROM av_actors)",
             [],
         )?;
 
         let count = conn.changes();
-        log::info!("同步了 {} 位新演员", count);
+        log::info!("从影片演员表同步了 {} 位新演员", count);
         Ok(())
-    })
+    })?;
+
+    // 3. Update actor letter indexes
+    db::with_db(|conn| {
+        conn.execute(
+            "UPDATE av_actors SET letter = SUBSTR(UPPER(name), 1, 1) WHERE letter IS NULL",
+            [],
+        )?;
+        Ok(())
+    })?;
+
+    log::info!("演员数据同步完成");
+    Ok(())
 }
 
 /// Find an actress by name, checking aliases too

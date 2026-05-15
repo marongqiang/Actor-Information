@@ -32,7 +32,10 @@ Thumbs.db
 src-tauri/icons/icon.icns
 
 # Excluded directories
-"Actor Information"/
+Actor Information/
+
+# Portable builds
+smart-media-vault-*.zip
 
 # Temporary files
 *.tmp
