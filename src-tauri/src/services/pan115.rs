@@ -5,10 +5,16 @@ use std::sync::Mutex;
 
 static CLIENT: once_cell::sync::Lazy<Client> = once_cell::sync::Lazy::new(|| {
     Client::builder()
-        .cookie_store(true)
         .timeout(std::time::Duration::from_secs(30))
-        .danger_accept_invalid_certs(false)
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+        .default_headers({
+            let mut h = reqwest::header::HeaderMap::new();
+            h.insert("Accept", "application/json, text/plain, */*".parse().unwrap());
+            h.insert("Accept-Language", "zh-CN,zh;q=0.9".parse().unwrap());
+            h.insert("Origin", "https://115.com".parse().unwrap());
+            h.insert("Referer", "https://115.com/".parse().unwrap());
+            h
+        })
         .build()
         .expect("Failed to build HTTP client")
 });
@@ -107,7 +113,7 @@ pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> 
 
     let resp = CLIENT
         .get(&url)
-        .header("Referer", "https://115.com/")
+        
         .send()
         .await
         .map_err(|e| CommandError::network(&format!("查询登录状态失败: {}", e)))?;
@@ -188,7 +194,7 @@ pub async fn login_with_cookie(cookie_string: String) -> Result<(), CommandError
     let resp = match CLIENT
         .get("https://115.com/")
         .header("Cookie", &cookie_string)
-        .header("Referer", "https://115.com/")
+        
         .send()
         .await
     {
@@ -261,7 +267,7 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
         let resp = match CLIENT
             .get(url)
             .header("Cookie", &cookie)
-            .header("Referer", "https://115.com/")
+            
             .header("Accept", "application/json")
             .send()
             .await
@@ -272,7 +278,8 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
 
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        log::info!("{} cid={} status={} preview={}", label, cid, status, &body[..body.len().min(150)]);
+        log::info!("{} cid={} status={}", label, cid, status);
+        log::info!("{} body: {}", label, &body[..body.len().min(500)]);
 
         if !status.is_success() { continue; }
 
