@@ -149,23 +149,27 @@ async function showDeleteGroup() {
 
 async function confirmGroupForm() {
   if (!groupFormName.value.trim()) { ElMessage.warning('请输入名称'); return }
-  if (groupFormMode === 'add') {
-    if (ctx.type === 'actress') {
-      await invoke('create_actress_group', { name: groupFormName.value.trim() })
-    } else {
-      const gtype = ctx.type === 'favorite' ? 'favorite' : 'manual'
-      await invoke('create_group', { name: groupFormName.value.trim(), groupType: gtype })
+  try {
+    if (groupFormMode === 'add') {
+      if (ctx.type === 'actress') {
+        await invoke('create_actress_group', { name: groupFormName.value.trim() })
+      } else {
+        const gtype = ctx.type === 'favorite' ? 'favorite' : 'manual'
+        await invoke('create_group', { name: groupFormName.value.trim(), groupType: gtype })
+      }
+      ElMessage.success('分组已创建')
+    } else if (groupFormMode === 'rename' && editingGroupId) {
+      if (ctx.type === 'actress') {
+        await invoke('rename_actress_group', { groupId: editingGroupId, newName: groupFormName.value.trim() })
+      } else {
+        await invoke('rename_group', { groupId: editingGroupId, newName: groupFormName.value.trim() })
+      }
+      ElMessage.success('已重命名')
     }
-    ElMessage.success('分组已创建')
-  } else if (groupFormMode === 'rename' && editingGroupId) {
-    if (ctx.type === 'actress') {
-      await invoke('rename_actress_group', { groupId: editingGroupId, newName: groupFormName.value.trim() })
-    } else {
-      await invoke('rename_group', { groupId: editingGroupId, newName: groupFormName.value.trim() })
-    }
-    ElMessage.success('已重命名')
+    groupFormDialog.value = false; await fetchGroups()
+  } catch (e: any) {
+    ElMessage.error(e?.message || e || '操作失败')
   }
-  groupFormDialog.value = false; await fetchGroups()
 }
 
 async function fetchGroups() {
