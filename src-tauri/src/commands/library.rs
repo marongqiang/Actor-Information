@@ -61,7 +61,13 @@ pub fn get_movies(
             progress: Some(r.progress), duration: Some(r.duration),
         }).collect();
 
-        Ok(MoviesResponse { movies, total })
+        let response = MoviesResponse { movies, total };
+    // Debug: serialize to test
+    match serde_json::to_string(&response) {
+        Ok(json) => log::info!("get_movies 序列化成功, json长度={}bytes", json.len()),
+        Err(e) => log::error!("get_movies 序列化失败: {}", e),
+    }
+    Ok(response)
     })
 }
 

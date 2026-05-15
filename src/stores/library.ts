@@ -26,9 +26,13 @@ export const useLibraryStore = defineStore('library', {
         this.total = result.total || 0
         this.currentPage = page
       } catch(e: any) {
-        // Force show error in UI
-        this.total = -1
-        console.error('get_movies failed:', e)
+        this.total = -2
+        const msg = String(e?.message || e)
+        console.error('get_movies failed:', msg, JSON.stringify(e))
+        // Try to decode error detail
+        if (msg.includes('failed to deserialize') || msg.includes('serialize')) {
+          console.error('Tauri序列化错误:', msg.substring(0, 200))
+        }
       } finally {
         this.loading = false
       }
