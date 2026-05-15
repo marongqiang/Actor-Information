@@ -88,13 +88,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, computed, reactive, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, PictureFilled } from '@element-plus/icons-vue'
 import type { MovieItem } from '@/types'
 
+const route = useRoute()
 const store = useLibraryStore()
 const searchKeyword = ref('')
 const filterGenre = ref('')
@@ -102,6 +104,11 @@ const filterYear = ref<number | undefined>(undefined)
 const filterGroup = ref<number | undefined>(undefined)
 const showHidden = ref(false)
 const currentPage = ref(1)
+
+watch(() => route.query.group_id, (val) => {
+  filterGroup.value = val ? Number(val) : undefined
+  doSearch()
+}, { immediate: true })
 
 // Context menu
 const ctx = reactive({ visible: false, x: 0, y: 0, movie: null as MovieItem | null })

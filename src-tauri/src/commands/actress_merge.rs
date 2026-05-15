@@ -98,10 +98,17 @@ pub fn get_actresses_paginated(
     sort_field: Option<String>,
     sort_order: Option<String>,
     include_pending: Option<bool>,
+    group_id: Option<i64>,
 ) -> Result<PaginatedActress, crate::utils::error::CommandError> {
     let include = include_pending.unwrap_or(true);
     db::with_db(|conn| {
-        let base_where = if !include { "WHERE a.is_pending = 0" } else { "" };
+        let mut where_parts: Vec<String> = Vec::new();
+        if !include { where_parts.push("a.is_pending = 0".to_string()); }
+        if let Some(gid) = group_id {
+            where_parts.push(format!("a.id IN (SELECT actress_id FROM actress_group_members WHERE group_id = {})", gid));
+        }
+        let base_where = if where_parts.is_empty() { String::new() } else { format!("WHERE {}", where_parts.join(" AND ")) };
+
         let (search_clause, search_param) = if let Some(ref s) = search {
             if !s.is_empty() {
                 (format!("{} {} AND (a.name LIKE ?1 OR EXISTS (SELECT 1 FROM actress_aliases al WHERE al.actress_id = a.id AND al.alias_name LIKE ?1))",

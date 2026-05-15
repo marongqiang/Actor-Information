@@ -49,16 +49,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useActressStore } from '@/stores/actress'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Loading, UserFilled } from '@element-plus/icons-vue'
 import type { ActressItem, ActressGroupItem } from '@/types'
 
+const route = useRoute()
 const store = useActressStore()
 const search = ref('')
 const page = ref(1)
+
+// Read group_id from URL for filtering
+const filterGroupId = ref<number | undefined>()
+watch(() => route.query.group_id, (val) => {
+  filterGroupId.value = val ? Number(val) : undefined
+  doSearch()
+}, { immediate: true })
 
 // Context menu
 const ctx = reactive({ visible: false, x: 0, y: 0, actress: null as ActressItem | null })
@@ -68,8 +77,8 @@ const actressGroups = ref<ActressGroupItem[]>([])
 
 function assetUrl(path: string) { return convertFileSrc(path) }
 
-function doSearch() { page.value = 1; store.fetchPaginated(1, 20, search.value || undefined) }
-function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, 20, search.value || undefined) }
+function doSearch() { page.value = 1; store.fetchPaginated(1, 20, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 
 function onContextMenu(e: MouseEvent, actress: ActressItem) {
   ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.actress = actress
