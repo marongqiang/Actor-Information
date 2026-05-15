@@ -39,6 +39,11 @@ const router = createRouter({
       component: () => import('@/views/ActressTable.vue'),
     },
     {
+      path: '/movie-table',
+      name: 'movie-table',
+      component: () => import('@/views/MovieTable.vue'),
+    },
+    {
       path: '/scan',
       name: 'scan',
       component: () => import('@/views/Scan.vue'),
