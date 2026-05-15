@@ -13,6 +13,17 @@ pub struct GroupItem {
 }
 
 #[tauri::command]
+pub fn clean_all_groups() -> Result<String, crate::utils::error::CommandError> {
+    db::with_db(|conn| {
+        let mg = conn.execute("DELETE FROM movie_groups", [])?;
+        let ag = conn.execute("DELETE FROM actress_group_members", [])?;
+        let g = conn.execute("DELETE FROM groups", [])?;
+        let ag2 = conn.execute("DELETE FROM actress_groups", [])?;
+        Ok(format!("已清理: {}个影片分组, {}个演员分组, {}个影片关联, {}个演员关联", g, ag2, mg, ag))
+    })
+}
+
+#[tauri::command]
 pub fn get_groups(category: Option<String>) -> Result<Vec<GroupItem>, crate::utils::error::CommandError> {
     let cat = category.unwrap_or_else(|| "all".to_string());
     db::with_db(|conn| {

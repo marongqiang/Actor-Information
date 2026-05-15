@@ -61,6 +61,7 @@ pub fn run() {
             commands::library::unhide_movies,
             // Groups
             commands::groups::get_groups,
+            commands::groups::clean_all_groups,
             commands::groups::create_group,
             commands::groups::rename_group,
             commands::groups::delete_group,

@@ -172,8 +172,16 @@ async function rescrapeMovie() {
 }
 
 onMounted(async () => {
+  // Apply route query filter on initial load
+  filterGroup.value = route.query.group_id ? Number(route.query.group_id) : undefined
   await store.fetchGroups()
-  await store.fetchMovies(1)
+  store.setFilters({
+    keyword: searchKeyword.value || undefined,
+    genre: filterGenre.value || undefined,
+    year: filterYear.value,
+    group_id: filterGroup.value,
+    is_hidden: showHidden.value || undefined,
+  })
 })
 </script>
 

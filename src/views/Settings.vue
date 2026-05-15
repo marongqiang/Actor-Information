@@ -76,6 +76,7 @@
           <div style="display: flex; gap: 12px; margin-bottom: 8px;">
             <el-button @click="exportList">导出影片列表</el-button>
             <el-button type="danger" @click="clearCache">清除图片缓存</el-button>
+            <el-button type="danger" @click="cleanGroups">清理所有分组</el-button>
           </div>
           <p style="font-size: 11px; color: #666; margin-top: 8px;">
             📋 日志文件: 软件目录\logs\app.log
@@ -199,7 +200,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const activeTab = ref('scrape')
 
@@ -352,6 +353,16 @@ async function saveActorSettings() {
 async function exportList() {
   const path = await invoke('export_list')
   ElMessage.success('已导出到: ' + path)
+}
+
+async function cleanGroups() {
+  try {
+    await ElMessageBox.confirm('确定清理所有分组数据？（不会影响影片和演员）', '确认', { type: 'warning' })
+    const result = await invoke('clean_all_groups')
+    ElMessage.success(String(result))
+    // Refresh sidebar groups
+    window.dispatchEvent(new CustomEvent('groups-changed'))
+  } catch (e: any) { if (e !== 'cancel') ElMessage.error(String(e?.message || e)) }
 }
 
 async function clearCache() {

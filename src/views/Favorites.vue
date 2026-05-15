@@ -161,7 +161,7 @@ async function delGroup(row: GroupItem) {
   favGroups.value = await invoke('get_groups', { category: 'favorite' })
 }
 
-onMounted(() => { fetchData() })
+onMounted(() => { filterGroupId.value = route.query.group_id ? Number(route.query.group_id) : undefined; fetchData() })
 </script>
 
 <style scoped>
