@@ -49,7 +49,7 @@ pub async fn scan_directory(
     let mut scanned = HashSet::new();
     collect_video_files(cid, depth, 0, &mut all_files, &mut scanned).await?;
 
-    log::info!("扫描完成: {} 个目录中共发现 {} 个视频文件", cid, all_files.len());
+    log::info!("扫描收集完成: 起始cid={}, 共发现 {} 个视频文件", cid, all_files.len());
     let total = all_files.len() as i64;
     let mut new_count = 0i64;
     let mut updated_count = 0i64;
