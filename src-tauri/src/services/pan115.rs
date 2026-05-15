@@ -18,7 +18,7 @@ static EMPTY_ARR: once_cell::sync::Lazy<Vec<serde_json::Value>> = once_cell::syn
 
 // 115 API endpoints
 const QRCODE_API: &str = "https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode";
-const QRCODE_STATUS_API: &str = "https://qrcodeapi.115.com/getstatus";
+const QRCODE_STATUS_API: &str = "https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode/status";
 const WEBAPI_BASE: &str = "https://webapi.115.com";
 const PROAPI_BASE: &str = "https://proapi.115.com";
 
@@ -44,23 +44,25 @@ pub fn has_cookie() -> bool {
 
 #[derive(Serialize)]
 pub struct QrCodeResult {
-    pub qrcode_url: String,
-    pub uid: String,
+    pub qrcode_url: String,      // base64 data URL for the QR image
+    pub uid: String,             // unique ID for polling status
 }
 
 pub async fn login_qrcode() -> Result<QrCodeResult, CommandError> {
-    // Use the 115 QR code API to get a login QR code
+    // Generate a UUID for this login session
+    let uid = uuid::Uuid::new_v4().to_string();
+
+    // 115 QR code API returns the QR code PNG image directly
+    // We pass the uid as a query parameter
+    let url = format!("{}?uid={}", QRCODE_API, uid);
+
     let resp = CLIENT
-        .get(QRCODE_API)
+        .get(&url)
         .send()
         .await
         .map_err(|e| CommandError::network(&format!("请求二维码失败: {}", e)))?;
 
     let status = resp.status();
-    let body_text = resp.text().await.unwrap_or_default();
-
-    log::info!("QR code API response status: {}, body_preview: {}", status, &body_text[..body_text.len().min(200)]);
-
     if !status.is_success() {
         return Err(CommandError::network(&format!(
             "获取二维码HTTP错误: {}",
@@ -68,40 +70,29 @@ pub async fn login_qrcode() -> Result<QrCodeResult, CommandError> {
         )));
     }
 
-    // Parse the response
-    let json: serde_json::Value = serde_json::from_str(&body_text)
-        .map_err(|e| CommandError::network(&format!("解析二维码响应失败: {}，原始响应: {}", e, &body_text[..body_text.len().min(100)])))?;
+    // Read response as bytes (it's a PNG image)
+    let bytes = resp.bytes().await
+        .map_err(|e| CommandError::network(&format!("读取二维码图片失败: {}", e)))?;
 
-    // Check for error code
-    if let Some(code) = json["code"].as_i64() {
-        if code != 0 {
-            let msg = json["message"].as_str().unwrap_or("未知错误");
-            return Err(CommandError::network(&format!("获取二维码失败: {}", msg)));
-        }
-    }
-
-    // Extract QR code data
-    let data = &json["data"];
-    let uid_val = data["uid"].as_str()
-        .or_else(|| data["qrcode"].as_str())
-        .unwrap_or("");
-
-    if uid_val.is_empty() {
+    // Check if it's actually an image (PNG magic bytes: 89 50 4E 47)
+    if bytes.len() < 4 || &bytes[..4] != b"\x89PNG" {
+        // If it's not a PNG, try to parse as text/JSON for error message
+        let text = String::from_utf8_lossy(&bytes);
+        log::warn!("二维码API返回非图片数据: {}", &text[..text.len().min(200)]);
         return Err(CommandError::network(&format!(
-            "未获取到二维码UID，响应: {}",
-            serde_json::to_string_pretty(&json).unwrap_or_default()
+            "二维码API返回异常: {}", &text[..text.len().min(100)]
         )));
     }
 
-    // The QR code image URL
-    let qrcode_url = data["qrcode"].as_str()
-        .or_else(|| data["qrcode_url"].as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("{}/qrcode?uid={}", QRCODE_STATUS_API, uid_val));
+    // Convert PNG to base64 data URL
+    let base64_img = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+    let qrcode_url = format!("data:image/png;base64,{}", base64_img);
+
+    log::info!("QR码获取成功, uid={}, 图片大小={}bytes", uid, bytes.len());
 
     Ok(QrCodeResult {
         qrcode_url,
-        uid: uid_val.to_string(),
+        uid,
     })
 }
 
@@ -112,7 +103,7 @@ pub struct LoginStatusResult {
 }
 
 pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> {
-    // Poll the QR code status
+    // Poll the QR code scanning status
     let url = format!("{}?uid={}", QRCODE_STATUS_API, uid);
 
     let resp = CLIENT
@@ -123,44 +114,48 @@ pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> 
         .map_err(|e| CommandError::network(&format!("查询登录状态失败: {}", e)))?;
 
     let body_text = resp.text().await.unwrap_or_default();
+    log::debug!("扫码状态轮询响应: {}", &body_text[..body_text.len().min(200)]);
 
-    let json: serde_json::Value = serde_json::from_str(&body_text)
-        .map_err(|e| CommandError::network(&format!("解析登录状态响应失败: {}", e)))?;
+    // Try to parse as JSON
+    let json: serde_json::Value = match serde_json::from_str(&body_text) {
+        Ok(j) => j,
+        Err(_) => {
+            // Response might not be JSON; return waiting status
+            return Ok(LoginStatusResult {
+                status: "waiting".to_string(),
+                cookie: None,
+            });
+        }
+    };
 
-    // The status code from 115 API
-    let status_code: i64;
-    let mut cookie: Option<String> = None;
+    // Parse status code from response
+    let status_code: i64 = json["data"]["status"].as_i64()
+        .or_else(|| json["status"].as_i64())
+        .unwrap_or(-1);
 
-    if let Some(code) = json["code"].as_i64() {
-        status_code = code;
-    } else if let Some(s) = json["status"].as_i64() {
-        status_code = s;
-    } else {
-        status_code = json["data"]["status"].as_i64().unwrap_or(0);
-    }
-
-    // Map status codes
-    // -1: waiting, 0: scanned/confirmed, 1: logged in, 2: expired/cancelled
+    // 115 QR status: -1=waiting, 0=scanned, 1=authorized, 2=expired
     let status = match status_code {
-        -1 | 0 => "waiting",
-        1 => "scanned",
-        2 => "authorized",
-        -2 | 4 => "expired",
+        0 => "scanned",
+        1 => "authorized",
+        2 => "expired",
         _ => "waiting",
     };
 
-    // When authorized, get the cookie from response
-    if status == "authorized" {
-        // The cookie might be in the response JSON
-        cookie = json["data"]["cookie"].as_str().map(|s| s.to_string());
+    // When authorized, extract the cookie
+    let cookie = if status == "authorized" {
+        let cookie_from_json = json["data"]["cookie"].as_str().map(|s| s.to_string());
 
-        // If not in JSON body, check if cookies were set automatically
-        if cookie.is_none() {
-            // For 115, after scanning, we need to do a separate request to get the full cookie
-            // The scanning confirmation sets cookies in the cookie store
-            log::info!("扫码已确认，尝试获取完整cookie");
+        if cookie_from_json.is_some() {
+            cookie_from_json
+        } else {
+            // Try to get cookies that were set during the scan confirmation
+            // The cookie might be in the scan response's headers
+            log::info!("扫码授权成功，但响应中无cookie字段");
+            None
         }
-    }
+    } else {
+        None
+    };
 
     Ok(LoginStatusResult {
         status: status.to_string(),
