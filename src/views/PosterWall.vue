@@ -120,10 +120,14 @@ const pageSize = ref(20)
 const debugLog = ref('')
 
 watch(() => route.query.group_id, (val) => {
-  debugLog.value = `watch: group_id=${val}`
   filterGroup.value = val ? Number(val) : undefined
   doSearch()
 }, { immediate: true })
+
+// 监控 store.total 变化
+watch(() => store.total, (newVal) => {
+  debugLog.value = `total=${newVal}` + (filterGroup.value ? ` fg=${filterGroup.value}` : '')
+})
 
 // Context menu
 const ctx = reactive({ visible: false, x: 0, y: 0, movie: null as MovieItem | null })
@@ -142,7 +146,7 @@ function assetUrl(path: string) {
 }
 
 function doSearch() {
-  debugLog.value = `doSearch: filterGroup=${filterGroup.value}`
+  debugLog.value = `doSearch: fg=${filterGroup.value} total=${store.total}`
   currentPage.value = 1
   store.setFilters({
     keyword: searchKeyword.value || undefined,
