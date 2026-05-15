@@ -8,7 +8,8 @@
 
     <div v-if="store.loading" class="loading"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
 
-    <div v-else class="actress-grid">
+    <div v-else class="actress-grid-wrapper">
+    <div class="actress-grid">
       <div v-for="actress in store.actresses" :key="actress.id" class="actress-card"
           @contextmenu.prevent="onContextMenu($event, actress)">
         <div class="avatar-container" @click.stop="goDetail(actress.id)">
@@ -27,16 +28,17 @@
         </div>
       </div>
     </div>
+    </div>
 
-    <el-pagination
-      v-if="store.total > 20"
-      v-model:current-page="page"
-      :page-size="20"
-      :total="store.total"
-      layout="prev, pager, next"
-      @current-change="onPageChange"
-      style="margin-top: 20px; justify-content: center;"
-    />
+    <div class="table-footer">
+      <el-pagination v-if="store.total > pageSize" v-model:current-page="page"
+        :page-size="pageSize" :total="store.total" layout="prev, pager, next" @current-change="onPageChange" background size="small" />
+      <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="onPageSizeChange">
+        <el-option :value="20" label="20条/页" />
+        <el-option :value="50" label="50条/页" />
+        <el-option :value="100" label="100条/页" />
+      </el-select>
+    </div>
 
     <!-- 右键菜单 -->
     <div v-if="ctx.visible" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
@@ -66,6 +68,7 @@ const router = useRouter()
 const store = useActressStore()
 const search = ref('')
 const page = ref(1)
+const pageSize = ref(20)
 
 // Read group_id from URL for filtering
 const filterGroupId = ref<number | undefined>()
@@ -81,8 +84,9 @@ const actressGroups = ref<ActressGroupItem[]>([])
 
 function assetUrl(path: string) { return convertFileSrc(path) }
 
-function doSearch() { page.value = 1; store.fetchPaginated(1, 20, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
-function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+function doSearch() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+function onPageSizeChange() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 
 function goDetail(id: number) { router.push(`/actress/${id}`) }
 
@@ -104,7 +108,8 @@ onMounted(() => { store.fetchPaginated(1, 20) })
 </script>
 
 <style scoped>
-.actress-page { }
+.actress-page { display: flex; flex-direction: column; height: calc(100vh - 60px); }
+.actress-grid-wrapper { flex: 1; overflow-y: auto; }
 .toolbar {
   display: flex; gap: 12px; align-items: center;
   margin-bottom: 20px; padding: 12px; background: #1a1a2e; border-radius: 8px;

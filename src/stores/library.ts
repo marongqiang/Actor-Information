@@ -13,13 +13,14 @@ export const useLibraryStore = defineStore('library', {
     sort: 'updated_at_desc',
   }),
   actions: {
-    async fetchMovies(page = 1) {
+    async fetchMovies(page = 1, pageSize = 20) {
       this.loading = true
       try {
         const result: any = await invoke('get_movies', {
           filters: this.filters,
           sort: this.sort,
           page,
+          pageSize,
         })
         this.movies = result.movies || []
         this.total = result.total || 0

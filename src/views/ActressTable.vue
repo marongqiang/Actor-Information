@@ -122,8 +122,13 @@
     </div>
 
     <div class="table-footer">
-      <el-pagination v-if="store.total > 20" v-model:current-page="page" :page-size="20" :total="store.total"
+      <el-pagination v-if="store.total > pageSize" v-model:current-page="page" :page-size="pageSize" :total="store.total"
         layout="prev, pager, next" @current-change="onPageChange" background size="small" />
+      <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="onPageSizeChange">
+        <el-option :value="20" label="20条/页" />
+        <el-option :value="50" label="50条/页" />
+        <el-option :value="100" label="100条/页" />
+      </el-select>
     </div>
 
     <!-- 合并对话框 -->
@@ -170,7 +175,7 @@ import type { ActressItem, MergeOptions, MergeResult } from '@/types'
 
 const route = useRoute()
 const store = useActressStore()
-const search = ref(''); const showPendingOnly = ref<boolean | undefined>(undefined); const page = ref(1)
+const search = ref(''); const showPendingOnly = ref<boolean | undefined>(undefined); const page = ref(1); const pageSize = ref(20)
 const scanning = ref(false); const selectedRows = ref<ActressItem[]>([])
 
 const filterGroupId = ref<number | undefined>()
@@ -194,13 +199,14 @@ const dupDialog = ref(false)
 
 function doSearch() { page.value = 1; fetchData(1) }
 function onPageChange(p: number) { page.value = p; fetchData(p) }
+function onPageSizeChange() { page.value = 1; fetchData(1) }
 function fetchData(p: number) {
-  store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
+  store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
 }
 function onSelectionChange(rows: ActressItem[]) { selectedRows.value = rows }
 function onSortChange(sort: any) {
   if (sort.prop) {
-    store.fetchPaginated(page.value, 20, search.value || undefined, sort.prop, sort.order, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
+    store.fetchPaginated(page.value, pageSize.value, search.value || undefined, sort.prop, sort.order, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
   }
 }
 function clearGroupFilter() {

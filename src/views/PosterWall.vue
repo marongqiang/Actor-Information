@@ -24,7 +24,8 @@
 
     <div v-if="store.loading" class="loading"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
 
-    <div v-else class="movie-grid">
+    <div v-else class="movie-grid-wrapper">
+    <div class="movie-grid">
       <div
         v-for="movie in store.movies"
         :key="movie.file_id"
@@ -55,16 +56,17 @@
         </div>
       </div>
     </div>
+    </div>
 
-    <el-pagination
-      v-if="store.total > 0"
-      v-model:current-page="currentPage"
-      :page-size="20"
-      :total="store.total"
-      layout="prev, pager, next"
-      @current-change="onPageChange"
-      style="margin-top: 20px; justify-content: center;"
-    />
+    <div class="table-footer">
+      <el-pagination v-if="store.total > pageSize" v-model:current-page="currentPage"
+        :page-size="pageSize" :total="store.total" layout="prev, pager, next" @current-change="onPageChange" background size="small" />
+      <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="onPageSizeChange">
+        <el-option :value="20" label="20条/页" />
+        <el-option :value="50" label="50条/页" />
+        <el-option :value="100" label="100条/页" />
+      </el-select>
+    </div>
 
     <!-- 右键菜单 -->
     <div v-if="ctx.visible" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
@@ -105,6 +107,7 @@ const filterYear = ref<number | undefined>(undefined)
 const filterGroup = ref<number | undefined>(undefined)
 const showHidden = ref(false)
 const currentPage = ref(1)
+const pageSize = ref(20)
 
 watch(() => route.query.group_id, (val) => {
   filterGroup.value = val ? Number(val) : undefined
@@ -128,6 +131,7 @@ function assetUrl(path: string) {
 }
 
 function doSearch() {
+  currentPage.value = 1
   store.setFilters({
     keyword: searchKeyword.value || undefined,
     genre: filterGenre.value || undefined,
@@ -137,10 +141,8 @@ function doSearch() {
   })
 }
 
-function onPageChange(page: number) {
-  currentPage.value = page
-  store.fetchMovies(page)
-}
+function onPageChange(p: number) { currentPage.value = p; store.fetchMovies(p, pageSize.value) }
+function onPageSizeChange() { currentPage.value = 1; store.fetchMovies(1, pageSize.value) }
 
 // Context menu handlers
 function onContextMenu(e: MouseEvent, movie: MovieItem) {
@@ -176,8 +178,9 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.poster-wall { }
-.toolbar {
+.poster-wall { display: flex; flex-direction: column; height: calc(100vh - 60px); }
+.movie-grid-wrapper { flex: 1; overflow-y: auto; }
+.toolbar { flex-shrink: 0;
   display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
   margin-bottom: 20px; padding: 12px; background: #1a1a2e; border-radius: 8px;
 }
@@ -201,6 +204,7 @@ onMounted(async () => {
 .progress-bar { position: absolute; bottom: 0; left: 0; right: 0; }
 .movie-info { padding: 8px; }
 .movie-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.table-footer { flex-shrink: 0; display: flex; justify-content: center; align-items: center; padding: 12px 0; }
 .movie-meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; gap: 8px; }
 .context-menu { position: fixed; z-index: 9999; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 .ctx-item { padding: 8px 16px; cursor: pointer; font-size: 13px; color: #c0c0d0; white-space: nowrap; }

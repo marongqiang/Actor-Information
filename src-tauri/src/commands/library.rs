@@ -36,7 +36,9 @@ pub fn get_movies(
     filters: FilterParams,
     sort: String,
     page: i64,
+    page_size: Option<i64>,
 ) -> Result<MoviesResponse, CommandError> {
+    let ps = page_size.unwrap_or(20);
     db::with_db(|conn| {
         let (rows, total) = queries::get_movies_paginated(
             conn,
@@ -47,7 +49,7 @@ pub fn get_movies(
             filters.is_hidden,
             &sort,
             page,
-            20,
+            ps,
         )?;
 
         let movies = rows.into_iter().map(|r| MovieItem {
