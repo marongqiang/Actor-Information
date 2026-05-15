@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS av_actors (
     waist                       INTEGER,
     hip                         INTEGER,
     cup                         TEXT,
-    letter                      CHAR(1)
+    letter                      CHAR(1),
+    created_at                  INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_av_actors_name ON av_actors(name);
 CREATE INDEX IF NOT EXISTS idx_av_actors_letter ON av_actors(letter);

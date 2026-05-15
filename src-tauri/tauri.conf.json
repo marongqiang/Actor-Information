@@ -26,7 +26,7 @@
       "menuOnLeftClick": false
     },
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https:; media-src 'self' asset: https:; script-src 'self'"
+      "csp": "default-src 'self'; img-src 'self' asset: https: data:; media-src 'self' asset: https:; script-src 'self'; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

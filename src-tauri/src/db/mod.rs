@@ -41,6 +41,7 @@ fn run_migrations(conn: &Connection) {
         ("v1", include_str!("migrations/v1.sql")),
         ("v2", include_str!("migrations/v2.sql")),
         ("v3", include_str!("migrations/v3.sql")),
+        ("v4", include_str!("migrations/v4.sql")),
     ];
 
     conn.execute(
@@ -81,7 +82,7 @@ fn seed_config(conn: &Connection) {
         .as_secs() as i64;
 
     let defaults = vec![
-        ("db_version", "3"),
+        ("db_version", "4"),
         ("scan_depth", "5"),
         ("cache_max_size", "2147483648"),
         ("theme", "dark"),
@@ -92,7 +93,7 @@ fn seed_config(conn: &Connection) {
         ("privacy_tray", "智能网盘影视库"),
         ("proxy_enabled", "false"),
         ("external_player", ""),
-        ("scrape_sources", r#"["tmdb","douban","javbus","javdb","fanza"]"#),
+        ("scrape_sources", r#"["tmdb","imdb","douban","javbus","javdb","fanza","airav","xcity","mgstage","fc2","jav321","javlibrary","arzon"]"#),
         ("video_extensions", r#"["mp4","mkv","avi","mov","rmvb","flv","wmv","ts","iso","m2ts"]"#),
         ("use_system_credential", "0"),
         ("auto_resume_tasks", "1"),

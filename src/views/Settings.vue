@@ -2,139 +2,186 @@
   <div class="settings-page">
     <h2>设置</h2>
 
-    <div class="section">
-      <h3>115 网盘登录</h3>
-      <div v-if="!loggedIn">
-        <el-tabs v-model="loginMethod" type="border-card" style="background: transparent;">
-          <el-tab-pane label="扫码登录" name="qrcode">
-            <el-button type="primary" @click="startLogin" :loading="loginLoading" style="margin-bottom: 12px;">
-              {{ loginLoading ? '等待扫码...' : '获取二维码' }}
-            </el-button>
-            <div v-if="qrcodeUrl" style="margin-top: 12px; text-align: center;">
-              <p>请使用 115 手机 App 扫描二维码：</p>
-              <img :src="qrcodeUrl" style="width: 200px; border-radius: 8px;" />
-              <p style="color: #888; margin-top: 8px;">状态: {{ loginStatusText }}</p>
-            </div>
-            <div v-if="qrError" style="margin-top: 12px;">
-              <el-alert :title="qrError" type="error" :closable="false" />
-              <p style="color: #888; margin-top: 8px; font-size: 13px;">
-                扫码登录可能因115 API变更而失败，建议使用「Cookie登录」方式
-              </p>
-            </div>
-          </el-tab-pane>
-          <el-tab-pane label="Cookie登录（推荐）" name="cookie">
-            <p style="color: #888; margin-bottom: 8px; font-size: 13px;">
-              从浏览器登录115网盘后，在开发者工具(F12) → Application/存储 → Cookies → 复制所有Cookie值粘贴到下方
-            </p>
-            <el-input
-              v-model="cookieInput"
-              type="textarea"
-              :rows="4"
-              placeholder="粘贴完整的Cookie字符串，例如：UID=xxx; CID=xxx; SEID=xxx; ..."
-              style="margin-bottom: 12px;"
-            />
-            <el-button type="primary" @click="loginByCookie" :loading="cookieLoading">
-              {{ cookieLoading ? '验证中...' : 'Cookie登录' }}
-            </el-button>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-      <div v-else>
-        <el-tag type="success">已登录</el-tag>
-        <el-button type="danger" @click="doLogout" style="margin-left: 12px;">退出登录</el-button>
-      </div>
-    </div>
+    <el-tabs v-model="activeTab" type="border-card">
+      <!-- 刮削源 -->
+      <el-tab-pane label="刮削源" name="scrape">
+        <el-form label-width="120px" size="small">
+          <el-form-item label="刮削数据源">
+            <el-checkbox-group v-model="scrapeSources">
+              <el-checkbox value="tmdb" label="TMDB" />
+              <el-checkbox value="imdb" label="IMDb" />
+              <el-checkbox value="douban" label="豆瓣" />
+              <el-checkbox value="javbus" label="JavBus" />
+              <el-checkbox value="javdb" label="JavDB" />
+              <el-checkbox value="fanza" label="Fanza" />
+              <el-checkbox value="airav" label="Airav" />
+              <el-checkbox value="xcity" label="XCITY" />
+              <el-checkbox value="mgstage" label="MGStage" />
+              <el-checkbox value="fc2" label="FC2" />
+              <el-checkbox value="jav321" label="Jav321" />
+              <el-checkbox value="javlibrary" label="JavLibrary" />
+              <el-checkbox value="arzon" label="Arzon" />
+            </el-checkbox-group>
+          </el-form-item>
+          <el-form-item label="TMDB API Key">
+            <el-input v-model="tmdbApiKey" type="password" show-password style="width: 320px;" placeholder="用于TMDB刮削" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="saveScrapeSettings">保存刮削设置</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
 
-    <div class="section">
-      <h3>刮削设置</h3>
-      <el-form label-width="140px">
-        <el-form-item label="刮削数据源">
-          <el-checkbox-group v-model="scrapeSources">
-            <el-checkbox value="tmdb" label="TMDB" />
-            <el-checkbox value="douban" label="豆瓣" />
-            <el-checkbox value="javbus" label="JavBus" />
-            <el-checkbox value="javdb" label="JavDB" />
-            <el-checkbox value="fanza" label="Fanza" />
-          </el-checkbox-group>
-        </el-form-item>
-        <el-form-item label="TMDB API Key">
-          <el-input v-model="tmdbApiKey" type="password" show-password style="width: 320px;" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="saveScrapeSettings">保存刮削设置</el-button>
-        </el-form-item>
-      </el-form>
-    </div>
+      <!-- 网络代理 -->
+      <el-tab-pane label="网络代理" name="proxy">
+        <el-form label-width="120px" size="small">
+          <el-form-item label="启用代理">
+            <el-switch v-model="proxyEnabled" />
+          </el-form-item>
+          <el-form-item label="代理类型">
+            <el-select v-model="proxyType" style="width: 160px;">
+              <el-option label="HTTP" value="http" />
+              <el-option label="SOCKS5" value="socks5" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="代理地址">
+            <el-input v-model="proxyHost" placeholder="127.0.0.1" style="width: 160px;" />
+          </el-form-item>
+          <el-form-item label="代理端口">
+            <el-input-number v-model="proxyPort" :min="1" :max="65535" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="saveProxySettings">保存代理设置</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
 
-    <div class="section">
-      <h3>应用设置</h3>
-      <el-form label-width="140px">
-        <el-form-item label="主题">
-          <el-radio-group v-model="theme">
-            <el-radio value="dark">暗色</el-radio>
-            <el-radio value="light">亮色</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="海报尺寸">
-          <el-radio-group v-model="posterSize">
-            <el-radio value="small">小</el-radio>
-            <el-radio value="medium">中</el-radio>
-            <el-radio value="large">大</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="窗口标题">
-          <el-input v-model="privacyTitle" style="width: 320px;" />
-        </el-form-item>
-        <el-form-item label="外部播放器路径">
-          <el-input v-model="externalPlayer" placeholder="如: C:\Program Files\DAUM\PotPlayer\PotPlayerMini64.exe" style="width: 400px;" />
-        </el-form-item>
-        <el-form-item label="播放链接续期间隔">
-          <el-input-number v-model="refreshInterval" :min="30" :max="600" /> 分钟
-        </el-form-item>
-        <el-form-item label="开机自启">
-          <el-switch v-model="autoStart" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="saveAppSettings">保存应用设置</el-button>
-        </el-form-item>
-      </el-form>
-    </div>
+      <!-- 缓存 -->
+      <el-tab-pane label="缓存" name="cache">
+        <el-form label-width="120px" size="small">
+          <el-form-item label="图片缓存大小">
+            <el-input-number v-model="cacheMaxSize" :min="128" :max="10240" /> MB
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="saveCacheSettings">保存缓存设置</el-button>
+          </el-form-item>
+        </el-form>
+        <el-divider />
+        <div class="danger-zone">
+          <h4>数据管理</h4>
+          <div style="display: flex; gap: 12px;">
+            <el-button @click="exportList">导出影片列表</el-button>
+            <el-button type="danger" @click="clearCache">清除图片缓存</el-button>
+          </div>
+        </div>
+      </el-tab-pane>
 
-    <div class="section">
-      <h3>演员管理</h3>
-      <el-form label-width="180px">
-        <el-form-item label="演员文件夹路径">
-          <el-input v-model="actorBaseDir" placeholder="D:\Media Library\Actor Information\picture" style="width: 400px;" />
-        </el-form-item>
-        <el-form-item label="刮削后自动创建演员">
-          <el-switch v-model="autoCreateActors" />
-        </el-form-item>
-        <el-form-item label="新增演员待审核">
-          <el-switch v-model="actorPendingReview" />
-        </el-form-item>
-        <el-form-item label="允许重命名演员文件夹">
-          <el-switch v-model="allowRenameFolder" />
-        </el-form-item>
-        <el-form-item label="合并时自动合并文件夹">
-          <el-switch v-model="mergeAutoFolders" />
-        </el-form-item>
-        <el-form-item label="合并文件命名模式">
-          <el-input v-model="mergeFilePattern" style="width: 200px;" />
-        </el-form-item>
-        <el-form-item label="合并默认模拟运行">
-          <el-switch v-model="mergeDryRun" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="saveActorSettings">保存演员设置</el-button>
-        </el-form-item>
-      </el-form>
-    </div>
+      <!-- 界面 -->
+      <el-tab-pane label="界面" name="ui">
+        <el-form label-width="140px" size="small">
+          <el-form-item label="主题">
+            <el-radio-group v-model="theme">
+              <el-radio value="dark">暗色</el-radio>
+              <el-radio value="light">亮色</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="海报尺寸">
+            <el-radio-group v-model="posterSize">
+              <el-radio value="small">小</el-radio>
+              <el-radio value="medium">中</el-radio>
+              <el-radio value="large">大</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="字体大小">
+            <el-input-number v-model="fontSize" :min="10" :max="24" /> px
+          </el-form-item>
+          <el-form-item label="窗口标题">
+            <el-input v-model="privacyTitle" style="width: 240px;" />
+          </el-form-item>
+          <el-form-item label="外部播放器路径">
+            <el-input v-model="externalPlayer" placeholder="如: C:\Program Files\DAUM\PotPlayer\PotPlayerMini64.exe" style="width: 400px;" />
+          </el-form-item>
+          <el-form-item label="播放链接续期间隔">
+            <el-input-number v-model="refreshInterval" :min="30" :max="600" /> 分钟
+          </el-form-item>
+          <el-form-item label="开机自启">
+            <el-switch v-model="autoStart" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="saveUiSettings">保存界面设置</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
 
-    <div class="section">
-      <h3>数据管理</h3>
-      <el-button @click="exportList">导出影片列表</el-button>
-      <el-button type="danger" @click="clearCache">清除图片缓存</el-button>
-    </div>
+      <!-- 常规 -->
+      <el-tab-pane label="常规" name="general">
+        <!-- 115 登录 -->
+        <h3>115 网盘登录</h3>
+        <div v-if="!loggedIn" style="margin-bottom: 24px;">
+          <el-tabs v-model="loginMethod" type="card" size="small">
+            <el-tab-pane label="扫码登录" name="qrcode">
+              <div style="padding: 12px 0;">
+                <el-button type="primary" @click="startLogin" :loading="loginLoading" size="small">
+                  {{ loginLoading ? '等待扫码...' : '获取二维码' }}
+                </el-button>
+                <div v-if="qrcodeUrl" style="margin-top: 12px; text-align: center;">
+                  <p>请使用 115 手机 App 扫描二维码：</p>
+                  <img :src="qrcodeUrl" style="width: 200px; border-radius: 8px;" />
+                  <p style="color: #888; margin-top: 8px; font-size: 12px;">状态: {{ loginStatusText }}</p>
+                </div>
+                <div v-if="qrError" style="margin-top: 12px;">
+                  <el-alert :title="qrError" type="error" :closable="false" />
+                </div>
+              </div>
+            </el-tab-pane>
+            <el-tab-pane label="Cookie登录（推荐）" name="cookie">
+              <div style="padding: 12px 0;">
+                <p style="color: #888; margin-bottom: 8px; font-size: 12px;">
+                  浏览器 F12 → Application → Cookies → 复制所有Cookie粘贴到下方
+                </p>
+                <el-input v-model="cookieInput" type="textarea" :rows="3" placeholder="UID=xxx; CID=xxx; SEID=xxx; ..." style="margin-bottom: 8px;" />
+                <el-button type="primary" @click="loginByCookie" :loading="cookieLoading" size="small">
+                  {{ cookieLoading ? '验证中...' : 'Cookie登录' }}
+                </el-button>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </div>
+        <div v-else style="margin-bottom: 24px;">
+          <el-tag type="success">已登录</el-tag>
+          <el-button type="danger" size="small" @click="doLogout" style="margin-left: 12px;">退出登录</el-button>
+        </div>
+
+        <!-- 演员管理 -->
+        <h3>演员文件夹管理</h3>
+        <el-form label-width="160px" size="small">
+          <el-form-item label="演员文件夹路径">
+            <el-input v-model="actorBaseDir" style="width: 360px;" />
+          </el-form-item>
+          <el-form-item label="刮削后自动创建演员">
+            <el-switch v-model="autoCreateActors" />
+          </el-form-item>
+          <el-form-item label="新增演员待审核">
+            <el-switch v-model="actorPendingReview" />
+          </el-form-item>
+          <el-form-item label="允许重命名演员文件夹">
+            <el-switch v-model="allowRenameFolder" />
+          </el-form-item>
+          <el-form-item label="合并文件夹">
+            <el-switch v-model="mergeAutoFolders" />
+          </el-form-item>
+          <el-form-item label="合并文件命名">
+            <el-input v-model="mergeFilePattern" style="width: 200px;" />
+          </el-form-item>
+          <el-form-item label="合并默认模拟运行">
+            <el-switch v-model="mergeDryRun" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="saveActorSettings">保存演员设置</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -143,6 +190,8 @@ import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 
+const activeTab = ref('scrape')
+
 const loggedIn = ref(false)
 const loginLoading = ref(false)
 const qrcodeUrl = ref('')
@@ -150,21 +199,33 @@ const loginUid = ref('')
 const loginStatusText = ref('')
 const qrError = ref('')
 let loginTimer: ReturnType<typeof setInterval> | null = null
-
 const loginMethod = ref('cookie')
 const cookieInput = ref('')
 const cookieLoading = ref(false)
 
+// Scrape
 const scrapeSources = ref<string[]>([])
 const tmdbApiKey = ref('')
+
+// Proxy
+const proxyEnabled = ref(false)
+const proxyType = ref('http')
+const proxyHost = ref('127.0.0.1')
+const proxyPort = ref(1080)
+
+// Cache
+const cacheMaxSize = ref(2048)
+
+// UI
 const theme = ref('dark')
 const posterSize = ref('medium')
+const fontSize = ref(14)
 const privacyTitle = ref('智能网盘影视库')
 const externalPlayer = ref('')
 const refreshInterval = ref(240)
 const autoStart = ref(false)
 
-// Actor folder settings (1.2.0)
+// Actor
 const actorBaseDir = ref('')
 const autoCreateActors = ref(true)
 const actorPendingReview = ref(true)
@@ -173,36 +234,18 @@ const mergeAutoFolders = ref(true)
 const mergeFilePattern = ref('{name}_{index}{ext}')
 const mergeDryRun = ref(true)
 
+// ─── QR Code Login ───
+
 async function startLogin() {
-  loginLoading.value = true
-  qrError.value = ''
+  loginLoading.value = true; qrError.value = ''
   try {
     const result: any = await invoke('login_qrcode')
-    qrcodeUrl.value = result.qrcode_url
-    loginUid.value = result.uid
+    qrcodeUrl.value = result.qrcode_url; loginUid.value = result.uid
     loginTimer = setInterval(checkLoginStatus, 2000)
   } catch (e: any) {
-    const msg = e.message || e
-    qrError.value = '获取二维码失败: ' + msg
+    qrError.value = '获取二维码失败: ' + (e.message || e)
     ElMessage.error(qrError.value)
     loginLoading.value = false
-  }
-}
-
-async function loginByCookie() {
-  if (!cookieInput.value.trim()) {
-    ElMessage.warning('请先粘贴Cookie')
-    return
-  }
-  cookieLoading.value = true
-  try {
-    await invoke('login_cookie_direct', { cookie: cookieInput.value.trim() })
-    loggedIn.value = true
-    ElMessage.success('Cookie登录成功')
-  } catch (e: any) {
-    ElMessage.error('Cookie验证失败: ' + (e.message || e))
-  } finally {
-    cookieLoading.value = false
   }
 }
 
@@ -213,16 +256,27 @@ async function checkLoginStatus() {
     loginStatusText.value = statusMap[result.status] || result.status
     if (result.status === 'authorized' && result.cookie) {
       await invoke('login_cookie', { cookie: result.cookie })
-      loggedIn.value = true
-      loginLoading.value = false
+      loggedIn.value = true; loginLoading.value = false
       if (loginTimer) clearInterval(loginTimer)
       ElMessage.success('登录成功')
     } else if (result.status === 'expired') {
       loginLoading.value = false
       if (loginTimer) clearInterval(loginTimer)
-      ElMessage.warning('二维码已过期，请重新获取')
+      ElMessage.warning('二维码已过期')
     }
-  } catch { /* ignore polling errors */ }
+  } catch { /* ignore */ }
+}
+
+async function loginByCookie() {
+  if (!cookieInput.value.trim()) { ElMessage.warning('请先粘贴Cookie'); return }
+  cookieLoading.value = true
+  try {
+    await invoke('login_cookie_direct', { cookie: cookieInput.value.trim() })
+    loggedIn.value = true
+    ElMessage.success('Cookie登录成功')
+  } catch (e: any) {
+    ElMessage.error('Cookie验证失败: ' + (e.message || e))
+  } finally { cookieLoading.value = false }
 }
 
 async function doLogout() {
@@ -231,27 +285,33 @@ async function doLogout() {
   ElMessage.success('已退出登录')
 }
 
+// ─── Save Handlers ───
+
 async function saveScrapeSettings() {
   await invoke('set_config', { key: 'scrape_sources', value: JSON.stringify(scrapeSources.value) })
-  if (tmdbApiKey.value) {
-    await invoke('set_secure_config', { key: 'tmdb_api_key', value: tmdbApiKey.value })
-  }
+  if (tmdbApiKey.value) await invoke('set_secure_config', { key: 'tmdb_api_key', value: tmdbApiKey.value })
   ElMessage.success('刮削设置已保存')
 }
 
-async function saveAppSettings() {
+async function saveProxySettings() {
+  await invoke('set_config', { key: 'proxy_enabled', value: String(proxyEnabled.value) })
+  ElMessage.success('代理设置已保存')
+}
+
+async function saveCacheSettings() {
+  await invoke('set_config', { key: 'cache_max_size', value: String(cacheMaxSize.value * 1024 * 1024) })
+  ElMessage.success('缓存设置已保存')
+}
+
+async function saveUiSettings() {
   await invoke('set_config', { key: 'theme', value: theme.value })
   await invoke('set_config', { key: 'poster_size', value: posterSize.value })
+  await invoke('set_config', { key: 'font_size', value: String(fontSize.value) })
   await invoke('set_config', { key: 'privacy_title', value: privacyTitle.value })
   await invoke('set_config', { key: 'external_player', value: externalPlayer.value })
   await invoke('set_config', { key: 'playback_refresh_interval', value: String(refreshInterval.value) })
   await invoke('set_config', { key: 'auto_start', value: String(autoStart.value) })
-  ElMessage.success('应用设置已保存')
-}
-
-async function exportList() {
-  const path = await invoke('export_list')
-  ElMessage.success('已导出到: ' + path)
+  ElMessage.success('界面设置已保存')
 }
 
 async function saveActorSettings() {
@@ -265,6 +325,11 @@ async function saveActorSettings() {
   ElMessage.success('演员设置已保存')
 }
 
+async function exportList() {
+  const path = await invoke('export_list')
+  ElMessage.success('已导出到: ' + path)
+}
+
 async function clearCache() {
   ElMessage.info('缓存清理功能待实现')
 }
@@ -276,14 +341,20 @@ onMounted(async () => {
     if (sources) scrapeSources.value = JSON.parse(sources)
     theme.value = (await invoke('get_config', { key: 'theme' }) as string) || 'dark'
     posterSize.value = (await invoke('get_config', { key: 'poster_size' }) as string) || 'medium'
+    const fz: string | null = await invoke('get_config', { key: 'font_size' })
+    if (fz) fontSize.value = parseInt(fz)
     privacyTitle.value = (await invoke('get_config', { key: 'privacy_title' }) as string) || '智能网盘影视库'
     externalPlayer.value = (await invoke('get_config', { key: 'external_player' }) as string) || ''
     const interval: string | null = await invoke('get_config', { key: 'playback_refresh_interval' })
     if (interval) refreshInterval.value = parseInt(interval)
-    const auto: string | null = await invoke('get_config', { key: 'auto_start' })
-    autoStart.value = auto === 'true'
+    autoStart.value = (await invoke('get_config', { key: 'auto_start' }) as string) === 'true'
 
-    // Load actor settings
+    const proxy: string | null = await invoke('get_config', { key: 'proxy_enabled' })
+    proxyEnabled.value = proxy === 'true'
+
+    const cm: string | null = await invoke('get_config', { key: 'cache_max_size' })
+    if (cm) cacheMaxSize.value = Math.round(parseInt(cm) / 1024 / 1024)
+
     actorBaseDir.value = (await invoke('get_config', { key: 'local_actor_base_dir' }) as string) || ''
     autoCreateActors.value = ((await invoke('get_config', { key: 'auto_create_actors_from_scrape' }) as string) || '1') === '1'
     actorPendingReview.value = ((await invoke('get_config', { key: 'actor_pending_review' }) as string) || '1') === '1'
@@ -296,10 +367,9 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.settings-page { max-width: 700px; }
-h2 { margin-bottom: 20px; }
-.section {
-  margin-bottom: 20px; padding: 16px; background: #1a1a2e; border-radius: 8px;
-}
-.section h3 { font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid #2a2a4a; padding-bottom: 8px; }
+.settings-page { max-width: 760px; }
+h2 { font-size: 20px; margin-bottom: 16px; }
+h3 { font-size: 15px; margin-bottom: 12px; color: #e0e0e0; }
+.danger-zone { }
+.danger-zone h4 { color: #f56c6c; font-size: 14px; margin-bottom: 12px; }
 </style>
