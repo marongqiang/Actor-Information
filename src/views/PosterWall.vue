@@ -118,6 +118,7 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 
 watch(() => route.query.group_id, (val) => {
+  console.log('PosterWall watch fired, group_id=', val)
   filterGroup.value = val ? Number(val) : undefined
   doSearch()
 }, { immediate: true })
@@ -139,6 +140,7 @@ function assetUrl(path: string) {
 }
 
 function doSearch() {
+  console.log('PosterWall doSearch, filterGroup=', filterGroup.value)
   currentPage.value = 1
   store.setFilters({
     keyword: searchKeyword.value || undefined,
