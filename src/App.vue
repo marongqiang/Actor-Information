@@ -15,7 +15,7 @@
             </div>
             <template v-if="expanded.poster">
               <div v-for="g in posterGroups" :key="'pg_'+g.id" class="nav-sub-item"
-                @click="$router.push(`/?group_id=${g.id}`)"
+                @click.stop="$router.push(`/?group_id=${g.id}`)"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'poster', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
@@ -29,7 +29,7 @@
             </div>
             <template v-if="expanded.favorites">
               <div v-for="g in favGroups" :key="'fg_'+g.id" class="nav-sub-item"
-                @click="$router.push(`/favorites?group_id=${g.id}`)"
+                @click.stop="$router.push(`/favorites?group_id=${g.id}`)"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'favorite', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
@@ -43,7 +43,7 @@
             </div>
             <template v-if="expanded.actress">
               <div v-for="g in actressGroups" :key="'ag_'+g.id" class="nav-sub-item"
-                @click="$router.push(`/actress?group_id=${g.id}`)"
+                @click.stop="$router.push(`/actress?group_id=${g.id}`)"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'actress', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.member_count || 0 }}</span></div>
             </template>
           </div>
