@@ -6,6 +6,7 @@
       <el-switch v-model="showPendingOnly" active-text="仅待审核" inactive-text="全部" size="small" @change="doSearch" />
       <el-button type="success" size="small" @click="scanFolder" :loading="scanning">扫描本地</el-button>
       <el-button size="small" @click="detectDup">检测重复</el-button>
+      <el-button size="small" type="danger" @click="deleteAll">全部删除</el-button>
       <span v-if="selectedRows.length" class="batch-actions">
         已选 {{ selectedRows.length }} 项
         <el-button size="small" type="warning" @click="batchMerge">合并</el-button>
@@ -41,6 +42,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="source" label="来源" width="70" sortable="custom" />
+        <el-table-column prop="local_folder_name" label="图片目录" width="140" sortable="custom" show-overflow-tooltip />
         <el-table-column prop="is_pending" label="待审核" width="75" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_is_pending`">
@@ -256,6 +258,15 @@ async function batchDelete() {
   await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 位演员？`, '确认删除', { type: 'warning' })
   const count = await store.deleteActresses(selectedRows.value.map(r => r.id))
   ElMessage.success(`已删除 ${count} 位`); doSearch()
+}
+
+async function deleteAll() {
+  await ElMessageBox.confirm('确定删除全部演员数据？此操作不可恢复！', '危险操作', { type: 'error', confirmButtonClass: 'el-button--danger' })
+  const allIds = store.actresses.map(a => a.id)
+  if (allIds.length) {
+    const count = await store.deleteActresses(allIds)
+    ElMessage.success(`已删除 ${count} 位演员`); doSearch()
+  }
 }
 
 onMounted(() => { fetchData(1) })
