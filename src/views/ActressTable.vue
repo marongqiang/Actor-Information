@@ -291,7 +291,9 @@ async function deleteAll() {
   ElMessage.success(`已删除 ${count} 位演员`); doSearch()
 }
 
-onMounted(() => { fetchData(1) })
+onMounted(() => {
+  // watch(immediate) 已在 setup 阶段触发了 doSearch()
+})
 </script>
 
 <style scoped>

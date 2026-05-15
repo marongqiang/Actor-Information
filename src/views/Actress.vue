@@ -104,7 +104,9 @@ async function addToGroupById(groupId: number) {
   ElMessage.success(`已添加到分组`)
 }
 
-onMounted(() => { store.fetchPaginated(1, 20) })
+onMounted(() => {
+  // watch(immediate) 已在 setup 阶段用正确的 group_id 触发了 doSearch()
+})
 </script>
 
 <style scoped>
