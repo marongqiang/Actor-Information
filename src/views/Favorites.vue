@@ -152,7 +152,9 @@ async function removeFavorite() {
   ElMessage.info('取消收藏功能待实现')
 }
 
-onMounted(() => { fetchData() })
+onMounted(() => {
+  // watch(immediate) 已在 setup 阶段用正确的 group_id 触发了 doSearch()
+})
 </script>
 
 <style scoped>

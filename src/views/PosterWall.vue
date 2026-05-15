@@ -173,7 +173,8 @@ async function rescrapeMovie() {
 
 onMounted(async () => {
   await store.fetchGroups()
-  doSearch()
+  // watch(immediate) 已在 setup 阶段用正确的 group_id 触发了 doSearch()
+  // 此处不能再调 doSearch()，否则会覆盖筛选结果
 })
 </script>
 
