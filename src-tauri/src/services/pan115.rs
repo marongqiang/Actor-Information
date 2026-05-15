@@ -249,15 +249,17 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
     let offset = (page - 1) * page_size;
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
-    // Try proapi first (newer 115 API), then fallback to webapi
-    for (base_url, label) in &[(PROAPI_BASE, "proapi"), (WEBAPI_BASE, "webapi")] {
-        let url = format!(
-            "{}/files/list?aid=1&cid={}&o=user_ptime&asc=0&offset={}&show_dir=1&limit={}&snap=0&natsort=1&format=json&_={}",
-            base_url, cid, offset, page_size, ts
-        );
+    // Try multiple URL formats (115 API is inconsistent across accounts)
+    let url_formats: Vec<(&str, String)> = vec![
+        ("category", format!("{}/category/files?cid={}&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts)),
+        ("files", format!("{}/files?aid=1&cid={}&offset={}&limit={}&show_dir=1&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts)),
+        ("files/list", format!("{}/files/list?aid=1&cid={}&o=user_ptime&asc=0&offset={}&show_dir=1&limit={}&snap=0&natsort=1&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts)),
+        ("proapi", format!("{}/files/list?aid=1&cid={}&offset={}&limit={}&show_dir=1&format=json&_={}", PROAPI_BASE, cid, offset, page_size, ts)),
+    ];
 
+    for (label, url) in &url_formats {
         let resp = match CLIENT
-            .get(&url)
+            .get(url)
             .header("Cookie", &cookie)
             .header("Referer", "https://115.com/")
             .header("Accept", "application/json")
@@ -265,33 +267,36 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
             .await
         {
             Ok(r) => r,
-            Err(e) => {
-                log::warn!("{} 请求失败: {}", label, e);
-                continue;
-            }
+            Err(e) => { log::warn!("{} 连接失败: {}", label, e); continue; }
         };
 
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        log::info!("{} cid={} status={}", label, cid, status);
-        log::debug!("{} body: {}", label, &body[..body.len().min(300)]);
+        log::info!("{} cid={} status={} preview={}", label, cid, status, &body[..body.len().min(150)]);
 
-        if status.is_success() {
-            match parse_files_response(&body, cid) {
-                Ok(result) => {
-                    log::info!("{} API成功: {} 个项目", label, result.0.len());
-                    return Ok(result);
-                }
-                Err(e) => {
-                    log::warn!("{} 解析失败: {}", label, e);
-                    // If it's an auth error, don't try other APIs
-                    if e.code == 2100 { return Err(e); }
-                }
+        if !status.is_success() { continue; }
+
+        match parse_files_response(&body, cid) {
+            Ok(result) if result.0.len() > 0 => {
+                log::info!("{} 成功: {} 个项目", label, result.0.len());
+                return Ok(result);
+            }
+            Ok(result) => {
+                log::info!("{} 成功但为空(可能cid={}下无文件)", label, cid);
+                // Don't error on empty - root dir might just have no files
+                return Ok(result);
+            }
+            Err(e) if e.code == 2100 => {
+                log::warn!("{} 认证失败: {}", label, e);
+                // Try next format
+            }
+            Err(e) => {
+                log::warn!("{} 解析失败: {}", label, e);
             }
         }
     }
 
-    Err(CommandError::network("所有115接口均不可用，Cookie可能已过期，请重新登录"))
+    Err(CommandError::unauthorized("115接口全部拒绝访问，Cookie可能缺少API权限字段。请确保Cookie包含完整字段（特别是UID/CID/SEID）"))
 }
 
 fn parse_files_response(body: &str, cid: &str) -> Result<(Vec<FileInfo>, i64), CommandError> {
