@@ -150,7 +150,7 @@ async function removeFavorite() {
   ElMessage.info('取消收藏功能待实现')
 }
 
-onMounted(() => { filterGroupId.value = route.query.group_id ? Number(route.query.group_id) : undefined; fetchData() })
+onMounted(() => { /* watch(immediate) already calls doSearch */ })
 </script>
 
 <style scoped>
