@@ -119,6 +119,7 @@ async function fetchData() {
         genre: filterGenre.value || undefined,
         group_id: filterGroupId.value,
         is_hidden: false,
+        favorites_only: true,
       },
       sort: 'updated_at_desc', page: page.value, pageSize: pageSize.value,
     })

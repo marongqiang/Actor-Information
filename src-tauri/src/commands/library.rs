@@ -10,6 +10,7 @@ pub struct FilterParams {
     pub group_id: Option<i64>,
     pub is_hidden: Option<bool>,
     pub is_finished: Option<bool>,
+    pub favorites_only: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -47,6 +48,7 @@ pub fn get_movies(
             filters.genre.as_deref(),
             filters.group_id,
             filters.is_hidden,
+            filters.favorites_only,
             &sort,
             page,
             ps,

@@ -42,11 +42,17 @@ pub fn get_movies_paginated(
     genre: Option<&str>,
     group_id: Option<i64>,
     is_hidden: Option<bool>,
+    favorites_only: Option<bool>,
     sort: &str,
     page: i64,
     page_size: i64,
 ) -> CommandResult<(Vec<MovieRow>, i64)> {
     let mut where_clauses = vec!["1=1".to_string()];
+
+    // favorites_only: only show movies in groups with type='favorite'
+    if favorites_only == Some(true) {
+        where_clauses.push("file_id IN (SELECT movie_id FROM movie_groups mg JOIN groups g ON mg.group_id = g.id WHERE g.type = 'favorite')".to_string());
+    }
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
     if let Some(kw) = keyword {
