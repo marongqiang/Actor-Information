@@ -119,8 +119,13 @@ const ctx = reactive({ visible: false, x: 0, y: 0, type: 'poster' as GroupCtx, g
 const groupFormDialog = ref(false); const groupFormTitle = ref(''); const groupFormName = ref('')
 let groupFormMode: 'add' | 'rename' | 'delete' = 'add'; let editingGroupId: number | null = null
 
-function navigateAndToggle(section: 'poster' | 'favorites' | 'actress', route: string) {
-  expanded[section] = !expanded[section]; $router.push(route)
+function navigateAndToggle(section: 'poster' | 'favorites' | 'actress', targetRoute: string) {
+  const wasExpanded = expanded[section]
+  expanded[section] = !expanded[section]
+  // 仅在折叠→展开、或当前路由与目标路由不同时才导航
+  if (!wasExpanded || currentRoute.value !== targetRoute) {
+    $router.push(targetRoute)
+  }
 }
 const $router = useRouter()
 
