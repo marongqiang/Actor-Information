@@ -74,7 +74,7 @@
             <el-button type="danger" @click="clearCache">清除图片缓存</el-button>
           </div>
           <p style="font-size: 11px; color: #666; margin-top: 8px;">
-            📋 日志文件: %APPDATA%\smart-media-vault\logs\app.log
+            📋 日志文件: 软件目录\logs\app.log
           </p>
         </div>
       </el-tab-pane>

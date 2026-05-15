@@ -4,7 +4,11 @@ use std::fs;
 use std::path::PathBuf;
 
 pub fn init_logger(app_data_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let log_dir = app_data_dir.join("logs");
+    // 使用exe所在目录作为日志目录（便携版方便查看）
+    let log_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.join("logs")))
+        .unwrap_or_else(|| app_data_dir.join("logs"));
     fs::create_dir_all(&log_dir)?;
 
     let log_file = log_dir.join("app.log");
