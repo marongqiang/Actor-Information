@@ -51,7 +51,7 @@ pub async fn scan_directory(
 
     log::info!("扫描收集完成: 起始cid={}, 共发现 {} 个视频文件", cid, all_files.len());
     if all_files.is_empty() {
-        log::warn!("未发现任何视频文件！请检查1)目录中是否有视频 2)文件扩展名是否在支持列表中({:?})", VIDEO_EXTENSIONS);
+        log::warn!("未发现任何视频文件！请检查1)目录中是否有视频 2)文件扩展名是否在配置中({:?})", get_video_extensions());
     }
     let total = all_files.len() as i64;
     let mut new_count = 0i64;
@@ -219,9 +219,16 @@ async fn collect_video_files(
     Ok(())
 }
 
+fn get_video_extensions() -> Vec<String> {
+    db::with_db(|conn| crate::db::queries::get_config(conn, "video_extensions"))
+        .ok().flatten()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_else(|| vec!["mp4","mkv","avi","mov","rmvb","flv","wmv","ts","iso","m2ts"].iter().map(|s| s.to_string()).collect())
+}
+
 fn is_video_file(name: &str) -> bool {
     if let Some(ext) = name.rsplit('.').next() {
-        VIDEO_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+        get_video_extensions().iter().any(|e| e.eq_ignore_ascii_case(ext))
     } else {
         false
     }

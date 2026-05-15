@@ -316,13 +316,17 @@ fn parse_files_response(body: &str, cid: &str) -> Result<(Vec<FileInfo>, i64), C
     let data_array = json["data"]["data"].as_array().or_else(|| json["data"].as_array()).map(|a| a.as_slice()).unwrap_or(&*EMPTY_ARR);
 
     let items = data_array.iter().map(|item| {
-        let fid = item["fid"].as_str().map(|s| s.to_string())
-            .or_else(|| item["file_id"].as_str().map(|s| s.to_string()))
-            .or_else(|| item["fid"].as_i64().map(|v| v.to_string()));
+        let fid_str = item["fid"].as_str().map(|s| s.to_string())
+            .or_else(|| item["file_id"].as_str().map(|s| s.to_string()));
+        let fid_num = item["fid"].as_i64();
+        let fid = fid_str.clone().or_else(|| fid_num.map(|v| v.to_string()));
+        // 115: fid为空/null/0/None → 目录；fid有值且非0 → 文件
+        let is_dir = fid_str.as_deref().map_or(true, |s| s.is_empty() || s == "0")
+            && fid_num.map_or(true, |n| n == 0);
         FileInfo {
             cid: item["cid"].as_str().or_else(|| item["category_id"].as_str()).map(|s| s.to_string()).unwrap_or_else(|| cid.to_string()),
             name: item["n"].as_str().or_else(|| item["name"].as_str()).unwrap_or("未知").to_string(),
-            is_dir: item["fid"].as_i64().unwrap_or(0) == 0 || item["fid"].is_null() || fid.is_none(),
+            is_dir,
             size: item["s"].as_i64().or_else(|| item["size"].as_i64()).unwrap_or(0),
             update_time: item["t"].as_i64().or_else(|| item["update_time"].as_i64()).or_else(|| item["ptime"].as_i64()).unwrap_or(0),
             file_id: fid,

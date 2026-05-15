@@ -23,6 +23,10 @@
               <el-checkbox value="arzon" label="Arzon" />
             </el-checkbox-group>
           </el-form-item>
+          <el-form-item label="视频扩展名">
+            <el-input v-model="videoExts" style="width: 400px;" placeholder="mp4,mkv,avi,mov,rmvb,flv,wmv,ts,iso,m2ts" />
+            <span style="font-size: 11px; color: #888; margin-left: 8px;">逗号分隔，扫描时仅收集这些格式</span>
+          </el-form-item>
           <el-form-item label="TMDB API Key">
             <el-input v-model="tmdbApiKey" type="password" show-password style="width: 320px;" placeholder="用于TMDB刮削" />
           </el-form-item>
@@ -212,6 +216,7 @@ const cookieLoading = ref(false)
 
 // Scrape
 const scrapeSources = ref<string[]>([])
+const videoExts = ref('')
 const tmdbApiKey = ref('')
 
 // Proxy
@@ -307,6 +312,7 @@ async function doLogout() {
 
 async function saveScrapeSettings() {
   await invoke('set_config', { key: 'scrape_sources', value: JSON.stringify(scrapeSources.value) })
+  await invoke('set_config', { key: 'video_extensions', value: JSON.stringify(videoExts.value.split(',').map(s => s.trim()).filter(Boolean)) })
   if (tmdbApiKey.value) await invoke('set_secure_config', { key: 'tmdb_api_key', value: tmdbApiKey.value })
   ElMessage.success('刮削设置已保存')
 }
@@ -357,6 +363,8 @@ onMounted(async () => {
     loggedIn.value = await invoke('check_token')
     const sources: string | null = await invoke('get_config', { key: 'scrape_sources' })
     if (sources) scrapeSources.value = JSON.parse(sources)
+    const exts: string | null = await invoke('get_config', { key: 'video_extensions' })
+    if (exts) { try { videoExts.value = JSON.parse(exts).join(',') } catch { videoExts.value = exts } }
     theme.value = (await invoke('get_config', { key: 'theme' }) as string) || 'dark'
     posterSize.value = (await invoke('get_config', { key: 'poster_size' }) as string) || 'medium'
     const fz: string | null = await invoke('get_config', { key: 'font_size' })
