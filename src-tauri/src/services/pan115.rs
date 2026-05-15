@@ -234,22 +234,38 @@ pub struct FileInfo {
 pub async fn list_root() -> Result<Vec<FileInfo>, CommandError> {
     let cookie = get_cookie().ok_or_else(|| CommandError::unauthorized("未登录115网盘"))?;
 
+    let url = format!("{}/files/list?limit=50&offset=0&cid=0", WEBAPI_BASE);
     let resp = CLIENT
-        .get(&format!("{}/files/list?limit=50&offset=0&cid=0", WEBAPI_BASE))
+        .get(&url)
         .header("Cookie", &cookie)
+        .header("Referer", "https://115.com/")
         .send()
         .await?;
 
-    let json: serde_json::Value = resp.json().await
-        .map_err(|e| CommandError::network(&format!("解析目录列表失败: {}", e)))?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    log::info!("list_root status={}, body_preview={}", status, &body[..body.len().min(300)]);
 
-    if json["code"].as_i64() != Some(0) && json["state"].as_i64() != Some(0) && json["state"].as_bool() != Some(true) {
-        let msg = json["message"].as_str().unwrap_or("未知错误");
-        return Err(CommandError::network(&format!("获取目录列表失败: {}", msg)));
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| CommandError::network(&format!("解析失败: {}, body: {}", e, &body[..body.len().min(100)])))?;
+
+    // 115 API: success may be indicated by code=0 OR state=true
+    let is_success = json["code"].as_i64() == Some(0)
+        || json["state"].as_bool() == Some(true)
+        || json["state"].as_i64() == Some(1);
+
+    if !is_success {
+        let msg = json["message"].as_str()
+            .or_else(|| json["error"].as_str())
+            .unwrap_or("未知错误");
+        log::warn!("list_root API返回错误: {}", msg);
+        return Err(CommandError::network(&format!("获取目录失败: {}", msg)));
     }
 
+    // Data may be in data.data (paginated) or data (direct array) or just an array
     let data_array = json["data"]["data"].as_array()
         .or_else(|| json["data"].as_array())
+        .or_else(|| json.as_array())
         .map(|a| a.as_slice())
         .unwrap_or(&*EMPTY_ARR);
 
@@ -286,14 +302,25 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
     let resp = CLIENT
         .get(&url)
         .header("Cookie", &cookie)
+        .header("Referer", "https://115.com/")
         .send()
         .await?;
 
-    let json: serde_json::Value = resp.json().await
-        .map_err(|e| CommandError::network(&format!("解析文件列表失败: {}", e)))?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    log::debug!("get_files cid={} status={}, preview={}", cid, status, &body[..body.len().min(200)]);
 
-    if json["code"].as_i64() != Some(0) && json["state"].as_bool() != Some(true) {
-        let msg = json["message"].as_str().unwrap_or("未知错误");
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| CommandError::network(&format!("解析失败: {}", e)))?;
+
+    let is_success = json["code"].as_i64() == Some(0)
+        || json["state"].as_bool() == Some(true)
+        || json["state"].as_i64() == Some(1);
+
+    if !is_success {
+        let msg = json["message"].as_str()
+            .or_else(|| json["error"].as_str())
+            .unwrap_or("未知错误");
         return Err(CommandError::network(&format!("获取文件列表失败: {}", msg)));
     }
 
