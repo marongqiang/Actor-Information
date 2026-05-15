@@ -184,11 +184,9 @@ pub async fn login_with_cookie(cookie_string: String) -> Result<(), CommandError
         return Err(CommandError::unauthorized("Cookie缺少必要字段(UID/CID)，请从浏览器复制完整Cookie"));
     }
 
-    // Validate by calling the actual file list API
-    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
-    let test_url = format!("{}/files?aid=1&cid=0&offset=0&limit=1&show_dir=1&format=json&_={}", WEBAPI_BASE, ts);
+    // Validate by checking if we can access 115.com as logged-in user
     let resp = match CLIENT
-        .get(&test_url)
+        .get("https://115.com/")
         .header("Cookie", &cookie_string)
         .header("Referer", "https://115.com/")
         .send()
@@ -200,34 +198,33 @@ pub async fn login_with_cookie(cookie_string: String) -> Result<(), CommandError
 
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
-    log::info!("Cookie验证 files/list status={}, preview={}", status, &body[..body.len().min(200)]);
+    let is_logged_in = body.contains("user_id") || body.contains("nickname") || body.contains("logout")
+        || body.contains("用户") || body.contains("登录");
+    log::info!("Cookie验证 status={}, is_logged_in={}", status, is_logged_in);
 
-    if !status.is_success() {
-        return Err(CommandError::unauthorized(&format!("HTTP {}: Cookie无效或网络问题", status)));
+    if status.is_success() && is_logged_in {
+        set_cookie(&cookie_string);
+        log::info!("Cookie验证成功");
+        return Ok(());
     }
 
-    // Try JSON parse
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-        let is_success = json["code"].as_i64() == Some(0)
-            || json["state"].as_bool() == Some(true)
-            || json["state"].as_i64() == Some(1);
-
-        if is_success {
-            set_cookie(&cookie_string);
-            log::info!("Cookie验证成功");
-            return Ok(());
+    // Fallback: try the user info API
+    let user_url = format!("{}/user/info", WEBAPI_BASE);
+    match CLIENT.get(&user_url).header("Cookie", &cookie_string).send().await {
+        Ok(r) => {
+            let body2 = r.text().await.unwrap_or_default();
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body2) {
+                if json["state"].as_bool() == Some(true) || json["code"].as_i64() == Some(0) {
+                    set_cookie(&cookie_string);
+                    log::info!("Cookie验证成功(user/info API)");
+                    return Ok(());
+                }
+            }
         }
-
-        let msg = json["message"].as_str()
-            .or_else(|| json["error"].as_str())
-            .unwrap_or("未知错误");
-        log::warn!("Cookie验证API返回错误: {}", msg);
-        return Err(CommandError::unauthorized(&format!("Cookie无效: {}", msg)));
+        Err(_) => {}
     }
 
-    // Non-JSON response: reject (too risky to accept HTML as valid)
-    log::warn!("Cookie验证返回非JSON响应: {}", &body[..body.len().min(100)]);
-    Err(CommandError::unauthorized("Cookie验证失败：服务器返回异常，请重新获取Cookie"))
+    Err(CommandError::unauthorized("Cookie无效，请从浏览器复制完整的Cookie字符串（需包含UID/CID/SEID）"))
 }
 
 // ─── File Operations ───
@@ -252,9 +249,9 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
     let offset = (page - 1) * page_size;
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
-    // 115 files API with full parameters
+    // 115 files API - try /files/list first (more compatible)
     let url = format!(
-        "{}/files?aid=1&cid={}&o=user_ptime&asc=0&offset={}&show_dir=1&limit={}&snap=0&natsort=1&format=json&_={}",
+        "{}/files/list?aid=1&cid={}&o=user_ptime&asc=0&offset={}&show_dir=1&limit={}&snap=0&natsort=1&format=json&_={}",
         WEBAPI_BASE, cid, offset, page_size, ts
     );
 
@@ -268,16 +265,33 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
 
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
-    log::info!("get_files cid={} status={} url={}", cid, status, &url[..url.len().min(120)]);
-    log::debug!("get_files body: {}", &body[..body.len().min(500)]);
+    log::info!("get_files cid={} status={}", cid, status);
+    log::debug!("get_files body: {}", &body[..body.len().min(300)]);
 
-    // Handle non-200
+    // If 405, try alternate endpoint
+    if status.as_u16() == 405 {
+        let url2 = format!(
+            "{}/files?aid=1&cid={}&offset={}&limit={}&show_dir=1&format=json&_={}",
+            WEBAPI_BASE, cid, offset, page_size, ts
+        );
+        let resp2 = CLIENT.get(&url2).header("Cookie", &cookie).header("Referer", "https://115.com/").send().await?;
+        let status2 = resp2.status();
+        let body2 = resp2.text().await.unwrap_or_default();
+        if status2.is_success() {
+            return parse_files_response(&body2, cid);
+        }
+        return Err(CommandError::network("HTTP 405: 115接口不可用"));
+    }
+
     if !status.is_success() {
         return Err(CommandError::network(&format!("HTTP {}: {}", status, &body[..body.len().min(100)])));
     }
 
-    // Parse response
-    let json: serde_json::Value = match serde_json::from_str(&body) {
+    parse_files_response(&body, cid)
+}
+
+fn parse_files_response(body: &str, cid: &str) -> Result<(Vec<FileInfo>, i64), CommandError> {
+    let json: serde_json::Value = match serde_json::from_str(body) {
         Ok(j) => j,
         Err(_) => {
             log::warn!("get_files返回非JSON: {}", &body[..body.len().min(300)]);
@@ -285,59 +299,33 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
         }
     };
 
-    // Check success: code=0 or state=true
     let err_code = json["code"].as_i64().unwrap_or(-1);
     let state_ok = json["state"].as_bool().unwrap_or(false);
     let err_msg = json["message"].as_str().or_else(|| json["error"].as_str()).unwrap_or("");
 
     if err_code != 0 && !state_ok {
-        log::warn!("get_files API错误 code={} msg={}", err_code, err_msg);
         if err_code == 99 || err_code == 911 || err_msg.contains("开小差") || err_msg.contains("登录") {
             return Err(CommandError::unauthorized(&format!("Cookie已过期或无效: {}", err_msg)));
         }
         return Err(CommandError::network(&format!("{} ({})", err_msg, err_code)));
     }
 
-    let total = json["data"]["count"].as_i64()
-        .or_else(|| json["count"].as_i64())
-        .unwrap_or(0);
+    let total = json["data"]["count"].as_i64().or_else(|| json["count"].as_i64()).unwrap_or(0);
+    let data_array = json["data"]["data"].as_array().or_else(|| json["data"].as_array()).map(|a| a.as_slice()).unwrap_or(&*EMPTY_ARR);
 
-    // 115 returns files in data array or data.data (paginated)
-    let data_array = json["data"]["data"].as_array()
-        .or_else(|| json["data"].as_array())
-        .map(|a| a.as_slice())
-        .unwrap_or(&*EMPTY_ARR);
-
-    let items = data_array.iter()
-        .map(|item| {
-            let fid = item["fid"].as_str().map(|s| s.to_string())
-                .or_else(|| item["file_id"].as_str().map(|s| s.to_string()))
-                .or_else(|| item["fid"].as_i64().map(|v| v.to_string()));
-            let is_dir = item["fid"].as_i64().unwrap_or(0) == 0
-                || item["fid"].is_null()
-                || fid.is_none();
-
-            FileInfo {
-                cid: item["cid"].as_str()
-                    .or_else(|| item["category_id"].as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| cid.to_string()),
-                name: item["n"].as_str()
-                    .or_else(|| item["name"].as_str())
-                    .unwrap_or("未知")
-                    .to_string(),
-                is_dir,
-                size: item["s"].as_i64()
-                    .or_else(|| item["size"].as_i64())
-                    .unwrap_or(0),
-                update_time: item["t"].as_i64()
-                    .or_else(|| item["update_time"].as_i64())
-                    .or_else(|| item["ptime"].as_i64())
-                    .unwrap_or(0),
-                file_id: fid,
-            }
-        })
-        .collect();
+    let items = data_array.iter().map(|item| {
+        let fid = item["fid"].as_str().map(|s| s.to_string())
+            .or_else(|| item["file_id"].as_str().map(|s| s.to_string()))
+            .or_else(|| item["fid"].as_i64().map(|v| v.to_string()));
+        FileInfo {
+            cid: item["cid"].as_str().or_else(|| item["category_id"].as_str()).map(|s| s.to_string()).unwrap_or_else(|| cid.to_string()),
+            name: item["n"].as_str().or_else(|| item["name"].as_str()).unwrap_or("未知").to_string(),
+            is_dir: item["fid"].as_i64().unwrap_or(0) == 0 || item["fid"].is_null() || fid.is_none(),
+            size: item["s"].as_i64().or_else(|| item["size"].as_i64()).unwrap_or(0),
+            update_time: item["t"].as_i64().or_else(|| item["update_time"].as_i64()).or_else(|| item["ptime"].as_i64()).unwrap_or(0),
+            file_id: fid,
+        }
+    }).collect();
 
     Ok((items, total))
 }
