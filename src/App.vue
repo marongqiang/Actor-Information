@@ -9,7 +9,7 @@
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/' }"
               @contextmenu.prevent="openGroupMenu($event, 'poster')">
-              <el-icon><PictureFilled /></el-icon><span @click.stop="$router.push('/')">海报墙</span>
+              <el-icon><PictureFilled /></el-icon><span @click.stop="$router.push({path:'/',query:{}})">海报墙</span>
               <el-icon class="arrow" :class="{ open: expanded.poster }" @click.stop="expanded.poster = !expanded.poster"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.poster">
@@ -23,7 +23,7 @@
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/favorites' }"
               @contextmenu.prevent="openGroupMenu($event, 'favorite')">
-              <el-icon><StarFilled /></el-icon><span @click.stop="$router.push('/favorites')">收藏影片</span>
+              <el-icon><StarFilled /></el-icon><span @click.stop="$router.push({path:'/favorites',query:{}})">收藏影片</span>
               <el-icon class="arrow" :class="{ open: expanded.favorites }" @click.stop="expanded.favorites = !expanded.favorites"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.favorites">
@@ -37,7 +37,7 @@
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/actress' }"
               @contextmenu.prevent="openGroupMenu($event, 'actress')">
-              <el-icon><UserFilled /></el-icon><span @click.stop="$router.push('/actress')">演员库</span>
+              <el-icon><UserFilled /></el-icon><span @click.stop="$router.push({path:'/actress',query:{}})">演员库</span>
               <el-icon class="arrow" :class="{ open: expanded.actress }" @click.stop="expanded.actress = !expanded.actress"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.actress">
