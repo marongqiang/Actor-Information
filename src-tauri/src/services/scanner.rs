@@ -136,9 +136,9 @@ async fn collect_video_files(
         return Ok(());
     }
 
-    let (items, total) = match pan115::get_files(cid, 1, 200).await {
+    let (items, reported_total) = match pan115::get_files(cid, 1, 200).await {
         Ok(r) => {
-            log::info!("扫描目录 cid={}: {} 个项目, {} 总计", cid, r.0.len(), r.1);
+            log::info!("扫描目录 cid={}: {} 个项目, API报告总计={}", cid, r.0.len(), r.1);
             r
         }
         Err(e) => {
@@ -146,14 +146,20 @@ async fn collect_video_files(
             return Ok(());
         }
     };
-    let total_pages = (total as f64 / 200.0).ceil() as i64;
+
+    // Don't trust API's total count - stop when items < page_size
+    let total_pages = if items.len() < 200 { 1 } else { ((reported_total as f64 / 200.0).ceil() as i64).min(50) };
+    log::debug!("cid={} 实际分页数={}", cid, total_pages);
 
     for page in 1..=total_pages {
         let page_items = if page == 1 {
             items.clone()
         } else {
             match pan115::get_files(cid, page, 200).await {
-                Ok((items, _)) => items,
+                Ok((items, _)) => {
+                    if items.is_empty() { break; }
+                    items
+                }
                 Err(e) => {
                     log::warn!("跳过目录分页 cid={} page={}: {}", cid, page, e);
                     continue;

@@ -98,19 +98,26 @@
     </div>
 
     <!-- 扫描进度弹窗 -->
-    <el-dialog v-model="scanDialogVisible" title="扫描进度" width="440px" :close-on-click-modal="false" :show-close="false">
-      <div style="text-align: center; padding: 20px;">
-        <el-progress :percentage="scanProgress" :stroke-width="12" :status="scanDone ? 'success' : undefined" />
-        <p style="margin-top: 16px; color: #e0e0e0;">{{ scanStatusText }}</p>
-        <p style="color: #888; font-size: 12px; margin-top: 8px;">
-          <span v-if="scanStats.files">已发现 {{ scanStats.files }} 个视频文件</span>
-        </p>
-        <div v-if="scanDone" style="margin-top: 20px;">
-          <p style="color: #67c23a;">✓ 扫描完成</p>
-          <p style="font-size: 12px; color: #888;">新增 {{ scanStats.new }} | 更新 {{ scanStats.updated }} | 总计 {{ scanStats.files }}</p>
-          <el-button type="primary" size="small" style="margin-top: 12px;" @click="scanDialogVisible = false; $router.push('/')">去海报墙查看 →</el-button>
+    <el-dialog v-model="scanDialogVisible" :title="scanDone ? '扫描完成' : '扫描中...'" width="400px"
+      :close-on-click-modal="false" :show-close="scanDone" @close="scanDialogVisible = false">
+      <div style="text-align: center; padding: 10px;">
+        <!-- 大号计数 -->
+        <div v-if="scanStats.files > 0" style="font-size: 48px; font-weight: bold; color: #409eff; margin: 12px 0;">
+          {{ scanStats.files }}
+        </div>
+        <div v-else style="margin: 20px 0;">
+          <el-icon class="is-loading" :size="36"><Loading /></el-icon>
+        </div>
+        <p style="font-size: 16px; color: #e0e0e0; margin-top: 8px;">{{ scanStatusText }}</p>
+        <div v-if="scanDone" style="margin-top: 20px; text-align: left; background: #252540; border-radius: 6px; padding: 12px;">
+          <p style="color: #67c23a;">✓ 新增: {{ scanStats.new }} 部</p>
+          <p style="color: #e6a23c;">⟳ 更新: {{ scanStats.updated }} 部</p>
         </div>
       </div>
+      <template #footer v-if="scanDone">
+        <el-button @click="scanDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="scanDialogVisible = false; $router.push('/')">去海报墙查看</el-button>
+      </template>
     </el-dialog>
 
     <!-- 历史任务 -->
@@ -140,6 +147,7 @@ import { useScanStore } from '@/stores/scan'
 import { useTaskStore } from '@/stores/task'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import type { FileItem } from '@/types'
 
 const store = useScanStore()
@@ -154,7 +162,6 @@ const scanLoading = ref(false)
 
 // Progress dialog
 const scanDialogVisible = ref(false)
-const scanProgress = ref(0)
 const scanDone = ref(false)
 const scanStatusText = ref('')
 const scanStats = reactive({ files: 0, new: 0, updated: 0 })
@@ -220,7 +227,7 @@ function removeSelected(dir: { cid: string; name: string }) {
 async function runScan() {
   scanLoading.value = true
   // Open progress dialog
-  scanDialogVisible.value = true; scanProgress.value = 10; scanDone.value = false
+  scanDialogVisible.value = true; scanDone.value = false
   scanStatusText.value = '正在扫描网盘目录...'
   scanStats.files = 0; scanStats.new = 0; scanStats.updated = 0
 
@@ -233,9 +240,8 @@ async function runScan() {
       totalNew += result.new; totalUpdated += result.updated; totalAll += result.total
       scanStats.files = totalAll; scanStats.new = totalNew; scanStats.updated = totalUpdated
       scanStatusText.value = `已扫描到影片数量: ${totalAll}`
-      scanProgress.value = Math.min(99, Math.round((totalAll / Math.max(totalAll + 10, 1)) * 100))
     }
-    scanProgress.value = 100; scanDone.value = true
+    scanDone.value = true
     scanStatusText.value = `扫描完成，共发现 ${totalAll} 部影片`
     lastResult.value = { total: totalAll, new: totalNew, updated: totalUpdated, deleted: 0 }
   } catch (e: any) {
