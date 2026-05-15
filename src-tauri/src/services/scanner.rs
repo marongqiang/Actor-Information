@@ -135,19 +135,37 @@ async fn collect_video_files(
         return Ok(());
     }
 
-    let (items, total) = pan115::get_files(cid, 1, 200).await?;
+    let (items, total) = match pan115::get_files(cid, 1, 200).await {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("跳过无法访问的目录 cid={}: {}", cid, e);
+            return Ok(()); // Skip failed directories, continue scanning others
+        }
+    };
     let total_pages = (total as f64 / 200.0).ceil() as i64;
 
     for page in 1..=total_pages {
-        let (page_items, _) = if page == 1 {
-            (items.clone(), total)
+        let page_items = if page == 1 {
+            items.clone()
         } else {
-            pan115::get_files(cid, page, 200).await?
+            match pan115::get_files(cid, page, 200).await {
+                Ok((items, _)) => items,
+                Err(e) => {
+                    log::warn!("跳过目录分页 cid={} page={}: {}", cid, page, e);
+                    continue;
+                }
+            }
         };
 
         for item in page_items {
             if item.is_dir {
-                Box::pin(collect_video_files(&item.cid, max_depth, current_depth + 1, files)).await?;
+                // Skip dirs with empty cid (invalid)
+                if item.cid.is_empty() || item.cid == "0" {
+                    continue;
+                }
+                if let Err(e) = Box::pin(collect_video_files(&item.cid, max_depth, current_depth + 1, files)).await {
+                    log::warn!("跳过子目录 {}: {}", item.name, e);
+                }
             } else if is_video_file(&item.name) {
                 files.push(item);
             }

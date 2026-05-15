@@ -1,5 +1,5 @@
 <template>
-  <div class="scan-page" v-loading.fullscreen.lock="fullscreenLoading" element-loading-text="扫描中，请稍候...">
+  <div class="scan-page">
     <h2>扫描管理</h2>
 
     <!-- 步骤一：选择目录 -->
@@ -97,6 +97,22 @@
       </div>
     </div>
 
+    <!-- 扫描进度弹窗 -->
+    <el-dialog v-model="scanDialogVisible" title="扫描进度" width="440px" :close-on-click-modal="false" :show-close="false">
+      <div style="text-align: center; padding: 20px;">
+        <el-progress :percentage="scanProgress" :stroke-width="12" :status="scanDone ? 'success' : undefined" />
+        <p style="margin-top: 16px; color: #e0e0e0;">{{ scanStatusText }}</p>
+        <p style="color: #888; font-size: 12px; margin-top: 8px;">
+          <span v-if="scanStats.files">已发现 {{ scanStats.files }} 个视频文件</span>
+        </p>
+        <div v-if="scanDone" style="margin-top: 20px;">
+          <p style="color: #67c23a;">✓ 扫描完成</p>
+          <p style="font-size: 12px; color: #888;">新增 {{ scanStats.new }} | 更新 {{ scanStats.updated }} | 总计 {{ scanStats.files }}</p>
+          <el-button type="primary" size="small" style="margin-top: 12px;" @click="scanDialogVisible = false; $router.push('/')">去海报墙查看 →</el-button>
+        </div>
+      </div>
+    </el-dialog>
+
     <!-- 历史任务 -->
     <div class="section" v-if="taskStore.tasks.length">
       <h3>扫描历史</h3>
@@ -135,7 +151,14 @@ const currentCid = ref('0')
 const loadingRoots = ref(false)
 const loadingDirs = ref(false)
 const scanLoading = ref(false)
-const fullscreenLoading = ref(false)
+
+// Progress dialog
+const scanDialogVisible = ref(false)
+const scanProgress = ref(0)
+const scanDone = ref(false)
+const scanStatusText = ref('')
+const scanStats = reactive({ files: 0, new: 0, updated: 0 })
+let scanTimer: any = null
 
 // Selection
 const selectedDirs = ref<{ cid: string; name: string }[]>([])
@@ -196,21 +219,37 @@ function removeSelected(dir: { cid: string; name: string }) {
 }
 
 async function runScan() {
-  scanLoading.value = true; fullscreenLoading.value = true
+  scanLoading.value = true
+  // Open progress dialog
+  scanDialogVisible.value = true; scanProgress.value = 0; scanDone.value = false
+  scanStatusText.value = '正在扫描网盘目录...'
+  scanStats.files = 0; scanStats.new = 0; scanStats.updated = 0
+
+  // Fake progress animation (will be replaced by real events later)
+  scanTimer = setInterval(() => {
+    if (scanProgress.value < 90) scanProgress.value += Math.random() * 10
+  }, 500)
+
   try {
-    let totalNew = 0, totalUpdated = 0, totalAll = 0, totalDel = 0
+    let totalNew = 0, totalUpdated = 0, totalAll = 0
     const dirsToScan = selectedDirs.value.length ? selectedDirs.value : [{ cid: currentCid.value, name: '' }]
     for (const dir of dirsToScan) {
+      scanStatusText.value = `扫描: ${dir.name || '当前目录'}...`
       const result: any = await store.scanDirectory(dir.cid, scanDepth.value, scanMode.value)
-      totalNew += result.new; totalUpdated += result.updated; totalAll += result.total; totalDel += result.deleted
+      totalNew += result.new; totalUpdated += result.updated; totalAll += result.total
+      scanStats.files = totalAll
+      scanStats.new = totalNew
+      scanStats.updated = totalUpdated
     }
-    lastResult.value = { total: totalAll, new: totalNew, updated: totalUpdated, deleted: totalDel }
-    ElMessage.success(`扫描完成！新增 ${totalNew} 部影片`)
-    if (autoScrape.value) ElMessage.info('自动刮削功能待实现')
+    scanProgress.value = 100; scanDone.value = true
+    scanStatusText.value = '扫描完成'
+    lastResult.value = { total: totalAll, new: totalNew, updated: totalUpdated, deleted: 0 }
   } catch (e: any) {
+    scanDialogVisible.value = false
     ElMessage.error('扫描失败: ' + (e.message || e))
   } finally {
-    scanLoading.value = false; fullscreenLoading.value = false
+    clearInterval(scanTimer)
+    scanLoading.value = false
   }
 }
 
