@@ -13,6 +13,22 @@ pub struct GroupItem {
 }
 
 #[tauri::command]
+pub fn debug_group_info() -> Result<String, crate::utils::error::CommandError> {
+    db::with_db(|conn| {
+        let mut result = String::new();
+        // All groups with types
+        let mut stmt = conn.prepare("SELECT id, name, type FROM groups ORDER BY type, id")?;
+        let groups: Vec<(i64, String, String)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?.filter_map(|r| r.ok()).collect();
+        for (id, name, gtype) in &groups {
+            let count: i64 = conn.query_row("SELECT COUNT(*) FROM movie_groups WHERE group_id = ?1", [id], |r| r.get(0))?;
+            result.push_str(&format!("[{}] {} (type={}) -> {}部影片\n", id, name, gtype, count));
+        }
+        if groups.is_empty() { result = "无分组数据".into(); }
+        Ok(result)
+    })
+}
+
+#[tauri::command]
 pub fn clean_all_groups() -> Result<String, crate::utils::error::CommandError> {
     db::with_db(|conn| {
         let mg = conn.execute("DELETE FROM movie_groups", [])?;

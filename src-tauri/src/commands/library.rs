@@ -41,6 +41,8 @@ pub fn get_movies(
     page: i64,
     page_size: Option<i64>,
 ) -> Result<MoviesResponse, CommandError> {
+    log::info!("get_movies 收到参数: keyword={:?} year={:?} genre={:?} group_id={:?} is_hidden={:?} favorites_only={:?}",
+        filters.keyword, filters.year, filters.genre, filters.group_id, filters.is_hidden, filters.favorites_only);
     let ps = page_size.unwrap_or(20);
     db::with_db(|conn| {
         let (rows, total) = queries::get_movies_paginated(
