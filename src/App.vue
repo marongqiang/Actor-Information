@@ -8,10 +8,9 @@
           <!-- 海报墙 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/' }"
-              @click="navigateAndToggle('poster', '/')"
               @contextmenu.prevent="openGroupMenu($event, 'poster')">
-              <el-icon><PictureFilled /></el-icon><span>海报墙</span>
-              <el-icon class="arrow" :class="{ open: expanded.poster }"><ArrowRight /></el-icon>
+              <el-icon><PictureFilled /></el-icon><span @click.stop="$router.push('/')">海报墙</span>
+              <el-icon class="arrow" :class="{ open: expanded.poster }" @click.stop="expanded.poster = !expanded.poster"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.poster">
               <div v-for="g in posterGroups" :key="'pg_'+g.id" class="nav-sub-item"
@@ -23,10 +22,9 @@
           <!-- 收藏影片 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/favorites' }"
-              @click="navigateAndToggle('favorites', '/favorites')"
               @contextmenu.prevent="openGroupMenu($event, 'favorite')">
-              <el-icon><StarFilled /></el-icon><span>收藏影片</span>
-              <el-icon class="arrow" :class="{ open: expanded.favorites }"><ArrowRight /></el-icon>
+              <el-icon><StarFilled /></el-icon><span @click.stop="$router.push('/favorites')">收藏影片</span>
+              <el-icon class="arrow" :class="{ open: expanded.favorites }" @click.stop="expanded.favorites = !expanded.favorites"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.favorites">
               <div v-for="g in favGroups" :key="'fg_'+g.id" class="nav-sub-item"
@@ -38,10 +36,9 @@
           <!-- 演员库 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/actress' }"
-              @click="navigateAndToggle('actress', '/actress')"
               @contextmenu.prevent="openGroupMenu($event, 'actress')">
-              <el-icon><UserFilled /></el-icon><span>演员库</span>
-              <el-icon class="arrow" :class="{ open: expanded.actress }"><ArrowRight /></el-icon>
+              <el-icon><UserFilled /></el-icon><span @click.stop="$router.push('/actress')">演员库</span>
+              <el-icon class="arrow" :class="{ open: expanded.actress }" @click.stop="expanded.actress = !expanded.actress"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.actress">
               <div v-for="g in actressGroups" :key="'ag_'+g.id" class="nav-sub-item"
@@ -123,14 +120,6 @@ const ctx = reactive({ visible: false, x: 0, y: 0, type: 'poster' as GroupCtx, g
 const groupFormDialog = ref(false); const groupFormTitle = ref(''); const groupFormName = ref('')
 let groupFormMode: 'add' | 'rename' | 'delete' = 'add'; let editingGroupId: number | null = null
 
-function navigateAndToggle(section: 'poster' | 'favorites' | 'actress', targetRoute: string) {
-  const wasExpanded = expanded[section]
-  expanded[section] = !expanded[section]
-  // 仅在折叠→展开、或当前路由与目标路由不同时才导航
-  if (!wasExpanded || currentRoute.value !== targetRoute) {
-    $router.push(targetRoute)
-  }
-}
 const $router = useRouter()
 
 function openGroupMenu(e: MouseEvent, type: GroupCtx) {
