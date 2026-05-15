@@ -295,21 +295,33 @@ pub fn end_playback(conn: &Connection, file_id: &str) -> CommandResult<()> {
 
 // ─── Groups ───
 
-pub fn get_all_groups(conn: &Connection) -> CommandResult<Vec<GroupRowWithCount>> {
-    let mut stmt = conn.prepare(
+pub fn get_all_groups(conn: &Connection, category: Option<&str>) -> CommandResult<Vec<GroupRowWithCount>> {
+    let (where_clause, param): (String, Option<String>) = match category {
+        Some(c) => ("WHERE g.type = ?1".to_string(), Some(c.to_string())),
+        None => (String::new(), None),
+    };
+    let sql = format!(
         "SELECT g.id, g.name, g.type, g.sort_order, COUNT(mg.movie_id)
          FROM groups g LEFT JOIN movie_groups mg ON g.id = mg.group_id
-         GROUP BY g.id ORDER BY g.sort_order"
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(GroupRowWithCount {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            group_type: row.get(2)?,
-            sort_order: row.get(3)?,
-            movie_count: row.get(4)?,
-        })
-    })?.filter_map(|r| r.ok()).collect();
+         {} GROUP BY g.id ORDER BY g.sort_order",
+        where_clause
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows: Vec<GroupRowWithCount> = if let Some(ref p) = param {
+        stmt.query_map(rusqlite::params![p], |row| {
+            Ok(GroupRowWithCount {
+                id: row.get(0)?, name: row.get(1)?, group_type: row.get(2)?,
+                sort_order: row.get(3)?, movie_count: row.get(4)?,
+            })
+        })?.filter_map(|r| r.ok()).collect()
+    } else {
+        stmt.query_map([], |row| {
+            Ok(GroupRowWithCount {
+                id: row.get(0)?, name: row.get(1)?, group_type: row.get(2)?,
+                sort_order: row.get(3)?, movie_count: row.get(4)?,
+            })
+        })?.filter_map(|r| r.ok()).collect()
+    };
     Ok(rows)
 }
 

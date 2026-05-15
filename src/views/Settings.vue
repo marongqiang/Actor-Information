@@ -237,10 +237,11 @@ const mergeDryRun = ref(true)
 // ─── QR Code Login ───
 
 async function startLogin() {
-  loginLoading.value = true; qrError.value = ''
+  loginLoading.value = true; qrError.value = ''; loginStatusText.value = '获取二维码中...'; pollCount = 0
   try {
     const result: any = await invoke('login_qrcode')
     qrcodeUrl.value = result.qrcode_url; loginUid.value = result.uid
+    loginStatusText.value = '等待扫码 (轮询中...)'
     loginTimer = setInterval(checkLoginStatus, 2000)
   } catch (e: any) {
     qrError.value = '获取二维码失败: ' + (e.message || e)
@@ -249,22 +250,31 @@ async function startLogin() {
   }
 }
 
+let pollCount = 0
 async function checkLoginStatus() {
+  pollCount++
   try {
     const result: any = await invoke('login_status', { uid: loginUid.value })
-    const statusMap: Record<string, string> = { waiting: '等待扫码', scanned: '已扫码，请确认', authorized: '已授权', expired: '已过期' }
+    const statusMap: Record<string, string> = { waiting: '等待扫码', scanned: '已扫码，请确认', authorized: '已授权，登录中...', expired: '已过期' }
     loginStatusText.value = statusMap[result.status] || result.status
-    if (result.status === 'authorized' && result.cookie) {
-      await invoke('login_cookie', { cookie: result.cookie })
-      loggedIn.value = true; loginLoading.value = false
-      if (loginTimer) clearInterval(loginTimer)
-      ElMessage.success('登录成功')
+    loginStatusText.value += ` (${pollCount})`
+    if (result.status === 'authorized') {
+      if (result.cookie) {
+        await invoke('login_cookie', { cookie: result.cookie })
+        loggedIn.value = true; loginLoading.value = false
+        if (loginTimer) clearInterval(loginTimer)
+        ElMessage.success('登录成功！')
+      } else {
+        loginStatusText.value = '已授权，等待Cookie... (' + pollCount + ')'
+      }
     } else if (result.status === 'expired') {
       loginLoading.value = false
       if (loginTimer) clearInterval(loginTimer)
-      ElMessage.warning('二维码已过期')
+      ElMessage.warning('二维码已过期，请重新获取')
     }
-  } catch { /* ignore */ }
+  } catch (e: any) {
+    loginStatusText.value = `轮询异常(${pollCount}): ` + (e.message || e)
+  }
 }
 
 async function loginByCookie() {

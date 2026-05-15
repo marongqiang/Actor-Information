@@ -13,15 +13,13 @@ pub struct GroupItem {
 }
 
 #[tauri::command]
-pub fn get_groups() -> Result<Vec<GroupItem>, crate::utils::error::CommandError> {
+pub fn get_groups(category: Option<String>) -> Result<Vec<GroupItem>, crate::utils::error::CommandError> {
+    let cat = category.unwrap_or_else(|| "all".to_string());
     db::with_db(|conn| {
-        let rows = queries::get_all_groups(conn)?;
+        let rows = queries::get_all_groups(conn, if cat == "all" { None } else { Some(&cat) })?;
         let groups = rows.into_iter().map(|r| GroupItem {
-            id: r.id,
-            name: r.name,
-            group_type: r.group_type,
-            sort_order: r.sort_order,
-            movie_count: r.movie_count,
+            id: r.id, name: r.name, group_type: r.group_type,
+            sort_order: r.sort_order, movie_count: r.movie_count,
         }).collect();
         Ok(groups)
     })
@@ -33,6 +31,18 @@ pub fn create_group(
     group_type: Option<String>,
 ) -> Result<GroupItem, crate::utils::error::CommandError> {
     let gtype = group_type.unwrap_or_else(|| "manual".to_string());
+
+    // Check for duplicate name
+    db::with_db(|conn| {
+        let exists: bool = conn
+            .query_row("SELECT COUNT(*) > 0 FROM groups WHERE name = ?1", [&name], |r| r.get(0))
+            .unwrap_or(false);
+        if exists {
+            return Err(crate::utils::error::CommandError::invalid_input(&format!("分组「{}」已存在", name)));
+        }
+        Ok(())
+    })?;
+
     let id = db::with_db(|conn| queries::create_group(conn, &name, &gtype))?;
     Ok(GroupItem {
         id,
