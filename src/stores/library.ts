@@ -24,8 +24,9 @@ export const useLibraryStore = defineStore('library', {
         })
         this.movies = result.movies || []
         this.total = result.total || 0
-        console.log('[library store] fetchMovies 完成: movies.length=', this.movies.length, 'total=', this.total, 'filters=', JSON.stringify(this.filters))
         this.currentPage = page
+      } catch(e: any) {
+        console.error('fetchMovies ERROR:', e)
       } finally {
         this.loading = false
       }
