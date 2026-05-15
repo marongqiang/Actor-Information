@@ -1,6 +1,6 @@
 [package]
 name = "smart-media-vault"
-version = "1.2.0"
+version = "1.2.3"
 edition = "2021"
 description = "智能网盘影视库 - 115网盘影视管理桌面应用"
 
