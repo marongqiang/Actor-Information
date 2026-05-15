@@ -255,26 +255,46 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
     let offset = (page - 1) * page_size;
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
-    // category/files is the only endpoint that works with the Cookie
-    // files and files/list return "服务器开小差了" (Cookie rejected)
-    // Retry category up to 2 times on 405 (transient error)
+    // cid=0 is special: try multiple formats for root directory
+    if cid == "0" {
+        let root_urls = vec![
+            format!("{}/category/files?cid=0&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
+            format!("{}/category?cid=0&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
+            format!("{}/files?aid=1&cid=0&offset={}&limit={}&show_dir=1&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
+            format!("{}/files/list?aid=1&cid=0&offset={}&limit={}&show_dir=1&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
+        ];
+        for url in &root_urls {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let resp = match CLIENT.get(url).header("Cookie", &cookie).send().await {
+                Ok(r) => r, Err(_) => continue,
+            };
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            log::info!("root url={} status={}", url.split('?').next().unwrap_or(""), status);
+            if status.is_success() {
+                if let Ok(result) = parse_files_response(&body, cid) {
+                    if result.0.len() > 0 { return Ok(result); }
+                }
+            }
+        }
+        // Return empty if all fail - user can still manually enter a CID
+        log::warn!("所有根目录端点均失败，返回空列表");
+        return Ok((vec![], 0));
+    }
+
+    // For subdirectories: category/files works reliably
     for retry in 0..3 {
         let url = format!("{}/category/files?cid={}&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts);
         let resp = match CLIENT.get(&url).header("Cookie", &cookie).send().await {
-            Ok(r) => r,
-            Err(e) => { log::warn!("category 连接失败(尝试{}): {}", retry + 1, e); continue; }
+            Ok(r) => r, Err(_) => { tokio::time::sleep(std::time::Duration::from_secs(1)).await; continue; }
         };
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-
         if status.as_u16() == 405 && retry < 2 {
-            log::warn!("category cid={} 返回405, 1秒后重试...", cid);
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             continue;
         }
         if status.is_success() {
-            log::info!("category cid={} status={}, {}字节", cid, status, body.len());
-            log::debug!("category body: {}", &body[..body.len().min(300)]);
+            let body = resp.text().await.unwrap_or_default();
             match parse_files_response(&body, cid) {
                 Ok(result) => return Ok(result),
                 Err(e) if e.code == 2100 => return Err(e),
