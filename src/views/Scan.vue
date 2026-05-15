@@ -2,70 +2,116 @@
   <div class="scan-page" v-loading.fullscreen.lock="fullscreenLoading" element-loading-text="扫描中，请稍候...">
     <h2>扫描管理</h2>
 
+    <!-- 步骤一：选择目录 -->
     <div class="section">
-      <h3>115 网盘根目录</h3>
-      <el-table :data="store.roots" style="width: 100%" border resizable stripe size="small">
-        <el-table-column prop="cid" label="目录 ID" width="180" show-overflow-tooltip />
-        <el-table-column prop="name" label="名称" show-overflow-tooltip />
-        <el-table-column label="操作" width="180" fixed="right">
+      <div class="step-header">
+        <el-tag type="primary" size="small">步骤一</el-tag>
+        <h3>选择要扫描的网盘目录</h3>
+        <el-button size="small" @click="refreshRoots" :loading="loadingRoots">刷新</el-button>
+      </div>
+
+      <!-- 面包屑导航 -->
+      <div class="breadcrumb" v-if="breadcrumbs.length">
+        <el-button size="small" text @click="navToRoot">根目录</el-button>
+        <template v-for="(b, i) in breadcrumbs" :key="b.cid">
+          <span class="sep">/</span>
+          <el-button size="small" text @click="navTo(b, i)">{{ b.name }}</el-button>
+        </template>
+      </div>
+
+      <!-- 目录/文件列表 -->
+      <el-table :data="currentList" style="width: 100%; margin-top: 8px;" border resizable stripe size="small"
+        v-loading="loadingDirs" @selection-change="onDirSelect">
+        <el-table-column type="selection" width="36" :selectable="isDir" />
+        <el-table-column label="名称" min-width="260" show-overflow-tooltip sortable="custom">
           <template #default="{ row }">
-            <el-button size="small" @click="openDir(row)">浏览</el-button>
-            <el-button size="small" type="primary" @click="startScan(row)">扫描</el-button>
+            <span :class="{ 'is-file': !row.is_dir }" style="cursor: pointer;" @click="row.is_dir ? enterDir(row) : undefined">
+              {{ row.is_dir ? '📁' : '🎬' }} {{ row.name }}
+            </span>
           </template>
         </el-table-column>
-      </el-table>
-      <p v-if="!store.roots.length" style="text-align: center; color: #888; padding: 24px;">请先在设置中登录115网盘</p>
-    </div>
-
-    <div class="section" v-if="currentDir">
-      <h3>当前目录: {{ currentDir.name }}</h3>
-      <div class="scan-options">
-        <el-radio-group v-model="scanMode" size="small">
-          <el-radio value="incremental">增量扫描</el-radio>
-          <el-radio value="full">全量扫描</el-radio>
-        </el-radio-group>
-        <span>深度：</span>
-        <el-input-number v-model="scanDepth" :min="1" :max="10" size="small" style="width: 80px;" />
-        <el-button type="primary" @click="runScan" :loading="scanLoading" size="small">
-          {{ scanLoading ? '扫描中...' : '开始扫描' }}
-        </el-button>
-      </div>
-      <el-table :data="store.files" style="width: 100%; margin-top: 10px;" border resizable stripe size="small"
-        v-loading="fileLoading" element-loading-text="加载文件列表...">
-        <el-table-column prop="name" label="文件名" min-width="200" show-overflow-tooltip sortable="custom" />
-        <el-table-column label="大小" width="100" sortable="custom">
-          <template #default="{ row }">{{ formatSize(row.size) }}</template>
-        </el-table-column>
-        <el-table-column prop="is_dir" label="类型" width="70">
-          <template #default="{ row }">{{ row.is_dir ? '📁' : '🎬' }}</template>
+        <el-table-column label="大小" width="90">
+          <template #default="{ row }">{{ row.is_dir ? '-' : formatSize(row.size) }}</template>
         </el-table-column>
         <el-table-column label="修改时间" width="160">
-          <template #default="{ row }">{{ new Date(row.update_time * 1000).toLocaleString() }}</template>
+          <template #default="{ row }">{{ row.update_time ? new Date(row.update_time * 1000).toLocaleString() : '-' }}</template>
         </el-table-column>
       </el-table>
+      <p v-if="!currentList.length && !loadingDirs" style="text-align: center; color: #888; padding: 20px;">
+        {{ store.roots.length ? '目录为空' : '请先在设置页登录115网盘' }}
+      </p>
     </div>
 
+    <!-- 步骤二：扫描设置 -->
     <div class="section">
-      <h3>任务列表</h3>
+      <div class="step-header">
+        <el-tag type="success" size="small">步骤二</el-tag>
+        <h3>扫描设置</h3>
+      </div>
+      <div class="settings-row">
+        <div class="setting-item">
+          <label>已选目录</label>
+          <span class="setting-val">
+            <el-tag v-for="d in selectedDirs" :key="d.cid" closable size="small" @close="removeSelected(d)" style="margin: 2px;">
+              {{ d.name }}
+            </el-tag>
+            <span v-if="!selectedDirs.length" style="color: #666;">未选择（将扫描当前目录及子目录）</span>
+          </span>
+        </div>
+        <div class="setting-item">
+          <label>扫描模式</label>
+          <el-radio-group v-model="scanMode" size="small">
+            <el-radio value="incremental">增量（仅新增/变更）</el-radio>
+            <el-radio value="full">全量（重新扫描全部）</el-radio>
+          </el-radio-group>
+        </div>
+        <div class="setting-item">
+          <label>子目录深度</label>
+          <el-input-number v-model="scanDepth" :min="1" :max="10" size="small" style="width: 100px;" />
+          <span style="color: #888; font-size: 12px; margin-left: 8px;">1=仅当前目录，5=5层子目录</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 步骤三：执行 -->
+    <div class="section">
+      <div class="step-header">
+        <el-tag type="warning" size="small">步骤三</el-tag>
+        <h3>执行扫描</h3>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <el-button type="primary" size="large" @click="runScan" :loading="scanLoading" :disabled="!canScan">
+          {{ scanLoading ? '扫描中...' : '开始扫描' }}
+        </el-button>
+        <el-checkbox v-model="autoScrape">扫描后自动刮削</el-checkbox>
+      </div>
+
+      <!-- 扫描结果 -->
+      <div v-if="lastResult" style="margin-top: 12px; padding: 10px; background: #252540; border-radius: 6px;">
+        <span style="color: #67c23a;">✓ 扫描完成</span>
+        <span style="margin-left: 16px;">总计: {{ lastResult.total }}</span>
+        <span style="margin-left: 16px; color: #67c23a;">新增: {{ lastResult.new }}</span>
+        <span style="margin-left: 16px; color: #e6a23c;">更新: {{ lastResult.updated }}</span>
+        <span style="margin-left: 16px; color: #f56c6c;">隐藏: {{ lastResult.deleted }}</span>
+        <el-button size="small" text type="primary" style="margin-left: 16px;" @click="$router.push('/')">去海报墙查看 →</el-button>
+      </div>
+    </div>
+
+    <!-- 历史任务 -->
+    <div class="section" v-if="taskStore.tasks.length">
+      <h3>扫描历史</h3>
       <el-table :data="taskStore.tasks" style="width: 100%" border resizable stripe size="small">
-        <el-table-column prop="id" label="任务 ID" width="120" show-overflow-tooltip />
-        <el-table-column prop="type" label="类型" width="80" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="id" label="任务ID" width="100" show-overflow-tooltip />
+        <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="180">
-          <template #default="{ row }">
-            <el-progress :percentage="row.progress" :stroke-width="6" :status="row.status === 'failed' ? 'exception' : undefined" />
-          </template>
+        <el-table-column label="进度" width="160">
+          <template #default="{ row }"><el-progress :percentage="row.progress" :stroke-width="6" /></template>
         </el-table-column>
-        <el-table-column prop="error" label="错误信息" min-width="120" show-overflow-tooltip />
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" @click="taskStore.resumeTask(row.id)" v-if="row.status === 'paused'">继续</el-button>
-            <el-button size="small" type="danger" @click="taskStore.cancelTask(row.id)" v-if="row.status !== 'completed'">取消</el-button>
-          </template>
+        <el-table-column prop="created_at" label="时间" width="160">
+          <template #default="{ row }">{{ new Date(row.created_at * 1000).toLocaleString() }}</template>
         </el-table-column>
       </el-table>
     </div>
@@ -73,19 +119,100 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, reactive } from 'vue'
 import { useScanStore } from '@/stores/scan'
 import { useTaskStore } from '@/stores/task'
+import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
+import type { FileItem } from '@/types'
 
 const store = useScanStore()
 const taskStore = useTaskStore()
-const currentDir = ref<{ cid: string; name: string } | null>(null)
+
+// Navigation
+const breadcrumbs = ref<{ cid: string; name: string }[]>([])
+const currentCid = ref('0')
+const loadingRoots = ref(false)
+const loadingDirs = ref(false)
+const scanLoading = ref(false)
+const fullscreenLoading = ref(false)
+
+// Selection
+const selectedDirs = ref<{ cid: string; name: string }[]>([])
 const scanMode = ref('incremental')
 const scanDepth = ref(5)
-const scanLoading = ref(false)
-const fileLoading = ref(false)
-const fullscreenLoading = ref(false)
+const autoScrape = ref(false)
+const lastResult = ref<any>(null)
+
+const canScan = computed(() => currentCid.value !== '0' || selectedDirs.value.length > 0)
+
+// All items in current view (dirs + files)
+const currentList = computed(() => store.files)
+
+function isDir(row: FileItem) { return row.is_dir }
+
+async function refreshRoots() {
+  loadingRoots.value = true
+  try {
+    await store.listRoot()
+    currentCid.value = '0'
+    breadcrumbs.value = []
+    await loadDir('0')
+  } catch (e: any) {
+    ElMessage.error('加载根目录失败: ' + (e.message || e))
+  } finally { loadingRoots.value = false }
+}
+
+async function loadDir(cid: string) {
+  loadingDirs.value = true
+  try { await store.getFiles(cid) } catch (e: any) { ElMessage.error('加载失败: ' + (e.message || e)) }
+  finally { loadingDirs.value = false }
+}
+
+async function enterDir(dir: FileItem) {
+  breadcrumbs.value.push({ cid: dir.cid, name: dir.name })
+  currentCid.value = dir.cid
+  await loadDir(dir.cid)
+}
+
+function navToRoot() {
+  breadcrumbs.value = []
+  currentCid.value = '0'
+  loadDir('0')
+}
+
+function navTo(_item: any, index: number) {
+  breadcrumbs.value = breadcrumbs.value.slice(0, index + 1)
+  currentCid.value = breadcrumbs.value[index]?.cid || '0'
+  loadDir(currentCid.value)
+}
+
+function onDirSelect(rows: FileItem[]) {
+  selectedDirs.value = rows.filter(r => r.is_dir).map(r => ({ cid: r.cid, name: r.name }))
+}
+
+function removeSelected(dir: { cid: string; name: string }) {
+  selectedDirs.value = selectedDirs.value.filter(d => d.cid !== dir.cid)
+}
+
+async function runScan() {
+  scanLoading.value = true; fullscreenLoading.value = true
+  try {
+    let totalNew = 0, totalUpdated = 0, totalAll = 0, totalDel = 0
+    const dirsToScan = selectedDirs.value.length ? selectedDirs.value : [{ cid: currentCid.value, name: '' }]
+    for (const dir of dirsToScan) {
+      const result: any = await store.scanDirectory(dir.cid, scanDepth.value, scanMode.value)
+      totalNew += result.new; totalUpdated += result.updated; totalAll += result.total; totalDel += result.deleted
+    }
+    lastResult.value = { total: totalAll, new: totalNew, updated: totalUpdated, deleted: totalDel }
+    ElMessage.success(`扫描完成！新增 ${totalNew} 部影片`)
+    if (autoScrape.value) ElMessage.info('自动刮削功能待实现')
+  } catch (e: any) {
+    ElMessage.error('扫描失败: ' + (e.message || e))
+  } finally {
+    scanLoading.value = false; fullscreenLoading.value = false
+  }
+}
 
 function formatSize(bytes: number) {
   if (!bytes) return '-'
@@ -96,49 +223,26 @@ function formatSize(bytes: number) {
 }
 
 function statusType(s: string) {
-  return { running: 'warning', completed: 'success', failed: 'danger', pending: 'info', paused: '' }[s] || 'info'
-}
-
-async function openDir(dir: { cid: string; name: string }) {
-  currentDir.value = dir
-  fileLoading.value = true
-  try { await store.getFiles(dir.cid) } catch (e: any) { ElMessage.error('加载失败: ' + (e.message || e)) }
-  finally { fileLoading.value = false }
-}
-
-async function startScan(dir: { cid: string; name: string }) {
-  currentDir.value = dir
-  fileLoading.value = true
-  try { await store.getFiles(dir.cid) } catch (e: any) { ElMessage.error('加载失败: ' + (e.message || e)) }
-  finally { fileLoading.value = false }
-}
-
-async function runScan() {
-  if (!currentDir.value) return
-  scanLoading.value = true
-  fullscreenLoading.value = true
-  try {
-    const result: any = await store.scanDirectory(currentDir.value.cid, scanDepth.value, scanMode.value)
-    ElMessage.success(`扫描完成: 新增 ${result.new}，更新 ${result.updated}`)
-    await taskStore.fetchPendingTasks()
-  } catch (e: any) {
-    ElMessage.error('扫描失败: ' + (e.message || e))
-  } finally {
-    scanLoading.value = false
-    fullscreenLoading.value = false
-  }
+  return { running: 'warning', completed: 'success', failed: 'danger', pending: 'info' }[s] || 'info'
 }
 
 onMounted(async () => {
-  await store.listRoot()
+  await refreshRoots()
   await taskStore.fetchPendingTasks()
 })
 </script>
 
 <style scoped>
-.scan-page { }
-h2 { font-size: 18px; margin-bottom: 16px; }
-.section { margin-bottom: 20px; padding: 14px; background: #1a1a2e; border-radius: 8px; }
-.section h3 { font-size: 15px; margin-bottom: 10px; }
-.scan-options { display: flex; gap: 10px; align-items: center; margin: 10px 0; }
+.scan-page { max-width: 900px; }
+h2 { font-size: 18px; margin-bottom: 12px; }
+.section { margin-bottom: 18px; padding: 14px; background: #1a1a2e; border-radius: 8px; }
+.step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.step-header h3 { font-size: 15px; }
+.breadcrumb { display: flex; align-items: center; gap: 2px; font-size: 13px; margin-bottom: 6px; }
+.breadcrumb .sep { color: #555; }
+.is-file { color: #808090; cursor: default; }
+.settings-row { display: flex; flex-direction: column; gap: 12px; }
+.setting-item { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.setting-item label { font-size: 13px; color: #9090a0; min-width: 80px; }
+.setting-val { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 </style>
