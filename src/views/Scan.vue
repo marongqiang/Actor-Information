@@ -25,8 +25,9 @@
         <el-button size="small" @click="loadDir(manualCid); manualCid=''">跳转</el-button>
       </div>
 
-      <!-- 目录/文件列表 -->
-      <el-table :data="currentList" style="width: 100%; margin-top: 8px;" border resizable stripe size="small"
+      <!-- 目录/文件列表（固定高度+滚动） -->
+      <div style="max-height: 340px; overflow: auto; margin-top: 8px;">
+      <el-table :data="currentList" style="width: 100%;" border resizable stripe size="small"
         v-loading="loadingDirs" @selection-change="onDirSelect">
         <el-table-column type="selection" width="36" :selectable="isDir" />
         <el-table-column label="名称" min-width="260" show-overflow-tooltip sortable="custom">
@@ -46,6 +47,7 @@
       <p v-if="!currentList.length && !loadingDirs" style="text-align: center; color: #888; padding: 20px;">
         {{ store.roots.length ? '目录为空' : '请先在设置页登录115网盘' }}
       </p>
+      </div>
     </div>
 
     <!-- 步骤二：扫描设置 -->

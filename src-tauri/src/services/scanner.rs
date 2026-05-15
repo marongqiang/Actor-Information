@@ -50,6 +50,9 @@ pub async fn scan_directory(
     collect_video_files(cid, depth, 0, &mut all_files, &mut scanned).await?;
 
     log::info!("扫描收集完成: 起始cid={}, 共发现 {} 个视频文件", cid, all_files.len());
+    if all_files.is_empty() {
+        log::warn!("未发现任何视频文件！请检查1)目录中是否有视频 2)文件扩展名是否在支持列表中({:?})", VIDEO_EXTENSIONS);
+    }
     let total = all_files.len() as i64;
     let mut new_count = 0i64;
     let mut updated_count = 0i64;
@@ -97,6 +100,7 @@ pub async fn scan_directory(
 
                 db::with_db(|conn| db::queries::insert_movie(conn, &m))?;
                 new_count += 1;
+                if new_count == 1 { log::info!("第一部入库影片: {} (fid={})", m.title, m.file_id); }
             }
         } else {
             // Check if file was updated
@@ -144,6 +148,7 @@ pub async fn scan_directory(
         0
     };
 
+    log::info!("入库完成: 新增{}部, 更新{}部, 隐藏{}部", new_count, updated_count, deleted);
     Ok(ScanResult {
         total,
         new: new_count,
