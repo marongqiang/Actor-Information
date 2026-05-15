@@ -136,13 +136,17 @@
             </el-tab-pane>
             <el-tab-pane label="Cookie登录（推荐）" name="cookie">
               <div style="padding: 12px 0;">
-                <p style="color: #888; margin-bottom: 8px; font-size: 12px;">
-                  浏览器 F12 → Application → Cookies → 复制所有Cookie粘贴到下方
-                </p>
-                <el-input v-model="cookieInput" type="textarea" :rows="3" placeholder="UID=xxx; CID=xxx; SEID=xxx; ..." style="margin-bottom: 8px;" />
+                <p style="color: #888; margin-bottom: 8px; font-size: 12px;">获取Cookie步骤：</p>
+                <ol style="color: #888; font-size: 12px; margin-bottom: 8px; padding-left: 16px;">
+                  <li>浏览器打开 <b>115.com</b> 并登录</li>
+                  <li>按 <b>F12</b> → Application(应用程序) → Cookies → 115.com</li>
+                  <li>复制 <b>UID、CID、SEID</b> 三个值，格式: <code>UID=xxx; CID=xxx; SEID=xxx</code></li>
+                </ol>
+                <el-input v-model="cookieInput" type="textarea" :rows="3" placeholder="UID=123456; CID=abcdef; SEID=xyz789" style="margin-bottom: 8px;" />
                 <el-button type="primary" @click="loginByCookie" :loading="cookieLoading" size="small">
                   {{ cookieLoading ? '验证中...' : 'Cookie登录' }}
                 </el-button>
+                <p style="color: #888; font-size: 11px; margin-top: 4px;">仅需 UID/CID/SEID 三个字段即可</p>
               </div>
             </el-tab-pane>
           </el-tabs>

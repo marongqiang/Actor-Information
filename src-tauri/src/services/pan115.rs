@@ -177,8 +177,15 @@ pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> 
 // ─── Cookie-Based Login (alternative method) ───
 
 pub async fn login_with_cookie(cookie_string: String) -> Result<(), CommandError> {
-    // Validate cookie by testing against 115 user info API
-    let test_url = format!("{}/user/info", WEBAPI_BASE);
+    // Check cookie has required fields
+    let has_uid = cookie_string.contains("UID=") || cookie_string.contains("uid=");
+    let has_cid = cookie_string.contains("CID=") || cookie_string.contains("cid=");
+    if !has_uid && !has_cid {
+        return Err(CommandError::unauthorized("Cookie缺少必要字段(UID/CID)，请从浏览器复制完整Cookie"));
+    }
+
+    // Validate by calling the actual file list API (same one used for browsing)
+    let test_url = format!("{}/files/list?limit=1&offset=0&cid=0", WEBAPI_BASE);
     let resp = match CLIENT
         .get(&test_url)
         .header("Cookie", &cookie_string)
@@ -187,36 +194,39 @@ pub async fn login_with_cookie(cookie_string: String) -> Result<(), CommandError
         .await
     {
         Ok(r) => r,
-        Err(e) => {
-            log::warn!("Cookie验证网络请求失败: {}", e);
-            return Err(CommandError::unauthorized(&format!("网络错误: {}", e)));
-        }
+        Err(e) => return Err(CommandError::unauthorized(&format!("网络错误: {}", e))),
     };
 
     let status = resp.status();
     let body = resp.text().await.unwrap_or_default();
-    log::info!("Cookie验证响应 status={}, preview={}", status, &body[..body.len().min(150)]);
+    log::info!("Cookie验证 files/list status={}, preview={}", status, &body[..body.len().min(200)]);
 
-    // Accept both JSON success and HTML responses (115 sometimes returns HTML)
-    if status.is_success() {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-            if json["code"].as_i64() == Some(0) || json["state"].as_bool() == Some(true) {
-                set_cookie(&cookie_string);
-                log::info!("Cookie验证成功（JSON）");
-                return Ok(());
-            }
-            let msg = json["message"].as_str().unwrap_or("未知错误");
-            return Err(CommandError::unauthorized(&format!("Cookie无效: {}", msg)));
-        }
-        // If response is HTML but 200 OK, cookie is likely valid
-        if body.contains("115") || body.contains("user") || body.contains("UID") || body.len() > 100 {
-            set_cookie(&cookie_string);
-            log::info!("Cookie验证成功（HTML响应，假定有效）");
-            return Ok(());
-        }
+    if !status.is_success() {
+        return Err(CommandError::unauthorized(&format!("HTTP {}: Cookie无效或网络问题", status)));
     }
 
-    Err(CommandError::unauthorized(&format!("Cookie验证失败 (HTTP {})", status)))
+    // Try JSON parse
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+        let is_success = json["code"].as_i64() == Some(0)
+            || json["state"].as_bool() == Some(true)
+            || json["state"].as_i64() == Some(1);
+
+        if is_success {
+            set_cookie(&cookie_string);
+            log::info!("Cookie验证成功");
+            return Ok(());
+        }
+
+        let msg = json["message"].as_str()
+            .or_else(|| json["error"].as_str())
+            .unwrap_or("未知错误");
+        log::warn!("Cookie验证API返回错误: {}", msg);
+        return Err(CommandError::unauthorized(&format!("Cookie无效: {}", msg)));
+    }
+
+    // Non-JSON response: reject (too risky to accept HTML as valid)
+    log::warn!("Cookie验证返回非JSON响应: {}", &body[..body.len().min(100)]);
+    Err(CommandError::unauthorized("Cookie验证失败：服务器返回异常，请重新获取Cookie"))
 }
 
 // ─── File Operations ───
