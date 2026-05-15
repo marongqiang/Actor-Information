@@ -29,6 +29,7 @@
       </el-tag>
       <el-button size="small" type="danger" @click="testIpc">测试IPC</el-button>
       <span style="font-size:11px;color:#f56c6c;margin-left:8px;">{{ debugLog }}</span>
+      <span v-if="store._error" style="font-size:11px;color:#ff4444;margin-left:8px;">错误: {{ store._error }}</span>
     </div>
 
     <div v-if="store.loading" class="loading"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
