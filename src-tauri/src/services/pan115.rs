@@ -103,7 +103,6 @@ pub struct LoginStatusResult {
 }
 
 pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> {
-    // Poll the QR code scanning status
     let url = format!("{}?uid={}", QRCODE_STATUS_API, uid);
 
     let resp = CLIENT
@@ -113,27 +112,21 @@ pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> 
         .await
         .map_err(|e| CommandError::network(&format!("查询登录状态失败: {}", e)))?;
 
+    // Get headers BEFORE consuming the body
+    let headers = resp.headers().clone();
     let body_text = resp.text().await.unwrap_or_default();
-    log::debug!("扫码状态轮询响应: {}", &body_text[..body_text.len().min(200)]);
 
-    // Try to parse as JSON
     let json: serde_json::Value = match serde_json::from_str(&body_text) {
         Ok(j) => j,
         Err(_) => {
-            // Response might not be JSON; return waiting status
-            return Ok(LoginStatusResult {
-                status: "waiting".to_string(),
-                cookie: None,
-            });
+            return Ok(LoginStatusResult { status: "waiting".to_string(), cookie: None });
         }
     };
 
-    // Parse status code from response
     let status_code: i64 = json["data"]["status"].as_i64()
         .or_else(|| json["status"].as_i64())
         .unwrap_or(-1);
 
-    // 115 QR status: -1=waiting, 0=scanned, 1=authorized, 2=expired
     let status = match status_code {
         0 => "scanned",
         1 => "authorized",
@@ -141,17 +134,34 @@ pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> 
         _ => "waiting",
     };
 
-    // When authorized, extract the cookie
+    // Extract cookie from the response or from Set-Cookie headers
     let cookie = if status == "authorized" {
-        let cookie_from_json = json["data"]["cookie"].as_str().map(|s| s.to_string());
+        let mut cookie_str = String::new();
 
-        if cookie_from_json.is_some() {
-            cookie_from_json
-        } else {
-            // Try to get cookies that were set during the scan confirmation
-            // The cookie might be in the scan response's headers
-            log::info!("扫码授权成功，但响应中无cookie字段");
+        if let Some(c) = json["data"]["cookie"].as_str() {
+            cookie_str = c.to_string();
+        }
+
+        let set_cookies: Vec<String> = headers
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .map(|s| s.split(';').next().unwrap_or("").to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if !set_cookies.is_empty() {
+            let header_cookies = set_cookies.join("; ");
+            cookie_str = if cookie_str.is_empty() { header_cookies } else { format!("{}; {}", cookie_str, header_cookies) };
+        }
+
+        if cookie_str.is_empty() {
+            log::warn!("扫码授权成功但未获取到Cookie，尝试直接登录...");
+            // Try to make a follow-up request to get cookies
             None
+        } else {
+            log::info!("扫码授权成功，获取到Cookie");
+            Some(cookie_str)
         }
     } else {
         None

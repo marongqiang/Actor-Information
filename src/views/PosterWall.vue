@@ -30,6 +30,7 @@
         :key="movie.file_id"
         class="movie-card"
         @click="$router.push(`/detail/${movie.file_id}`)"
+        @contextmenu.prevent="onContextMenu($event, movie)"
       >
         <div class="poster-container">
           <img
@@ -64,14 +65,35 @@
       @current-change="onPageChange"
       style="margin-top: 20px; justify-content: center;"
     />
+
+    <!-- 右键菜单 -->
+    <div v-if="ctx.visible" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
+      <div class="ctx-item" @click="addToFavorites">⭐ 收藏</div>
+      <div class="ctx-item" @click="addMovieToGroup">📁 添加到分组</div>
+      <div class="ctx-item" @click="toggleHide">👁 {{ ctx.movie?.is_hidden ? '取消隐藏' : '隐藏' }}</div>
+      <div class="ctx-item" @click="rescrapeMovie">🔄 重新刮削</div>
+    </div>
+
+    <!-- 分组选择对话框 -->
+    <el-dialog v-model="groupSelectDialog" title="选择分组" width="360px">
+      <el-select v-model="selectedGroupId" placeholder="选择目标分组" style="width: 100%;" size="small">
+        <el-option v-for="g in store.groups" :key="g.id" :label="g.name" :value="g.id" />
+      </el-select>
+      <template #footer>
+        <el-button @click="groupSelectDialog = false">取消</el-button>
+        <el-button type="primary" @click="confirmAddToGroup">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, reactive } from 'vue'
 import { useLibraryStore } from '@/stores/library'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { ElMessage } from 'element-plus'
 import { Loading, PictureFilled } from '@element-plus/icons-vue'
+import type { MovieItem } from '@/types'
 
 const store = useLibraryStore()
 const searchKeyword = ref('')
@@ -80,6 +102,11 @@ const filterYear = ref<number | undefined>(undefined)
 const filterGroup = ref<number | undefined>(undefined)
 const showHidden = ref(false)
 const currentPage = ref(1)
+
+// Context menu
+const ctx = reactive({ visible: false, x: 0, y: 0, movie: null as MovieItem | null })
+const groupSelectDialog = ref(false)
+const selectedGroupId = ref<number | null>(null)
 
 const allGenres = ['动作', '科幻', '喜剧', '爱情', '恐怖', '剧情', '悬疑', '动画', '纪录片']
 const years = computed(() => {
@@ -104,6 +131,46 @@ function doSearch() {
 function onPageChange(page: number) {
   currentPage.value = page
   store.fetchMovies(page)
+}
+
+// Context menu handlers
+function onContextMenu(e: MouseEvent, movie: MovieItem) {
+  ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.movie = movie
+}
+
+async function addToFavorites() {
+  if (ctx.movie) {
+    await invoke('set_config', { key: `fav_${ctx.movie.file_id}`, value: '1' })
+    ElMessage.success('已添加到收藏')
+  }
+  ctx.visible = false
+}
+
+function addMovieToGroup() {
+  ctx.visible = false; groupSelectDialog.value = true
+}
+
+async function confirmAddToGroup() {
+  if (!selectedGroupId.value || !ctx.movie) return
+  await invoke('add_movies_to_group', { groupId: selectedGroupId.value, fileIds: [ctx.movie.file_id] })
+  ElMessage.success('已添加到分组')
+  groupSelectDialog.value = false
+}
+
+async function toggleHide() {
+  if (!ctx.movie) return
+  if (ctx.movie.is_hidden) {
+    await store.unhideMovies([ctx.movie.file_id])
+  } else {
+    await store.toggleHidden([ctx.movie.file_id])
+  }
+  ElMessage.success(ctx.movie.is_hidden ? '已取消隐藏' : '已隐藏')
+  ctx.visible = false
+}
+
+async function rescrapeMovie() {
+  if (ctx.movie) ElMessage.info('重新刮削功能待实现')
+  ctx.visible = false
 }
 
 onMounted(async () => {
@@ -139,4 +206,7 @@ onMounted(async () => {
 .movie-info { padding: 8px; }
 .movie-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .movie-meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; gap: 8px; }
+.context-menu { position: fixed; z-index: 9999; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.ctx-item { padding: 8px 16px; cursor: pointer; font-size: 13px; color: #c0c0d0; }
+.ctx-item:hover { background: #3a3a5a; color: #fff; }
 </style>

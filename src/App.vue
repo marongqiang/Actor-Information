@@ -1,7 +1,7 @@
 <template>
   <div id="app-container">
     <el-container>
-      <el-aside width="220px" class="sidebar">
+      <el-aside width="200px" class="sidebar">
         <div class="logo" @click="$router.push('/')">
           <h2>智能网盘影视库</h2>
         </div>
@@ -15,6 +15,10 @@
           <el-menu-item index="/">
             <el-icon><PictureFilled /></el-icon>
             <span>海报墙</span>
+          </el-menu-item>
+          <el-menu-item index="/favorites">
+            <el-icon><StarFilled /></el-icon>
+            <span>收藏影片</span>
           </el-menu-item>
           <el-menu-item index="/actress">
             <el-icon><UserFilled /></el-icon>
@@ -54,7 +58,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { listen } from '@tauri-apps/api/event'
-import { PictureFilled, UserFilled, Grid, FolderOpened, Setting } from '@element-plus/icons-vue'
+import { PictureFilled, UserFilled, Grid, FolderOpened, Setting, StarFilled } from '@element-plus/icons-vue'
 import type { Task } from '@/types'
 
 const route = useRoute()
@@ -82,18 +86,13 @@ body { font-family: 'Microsoft YaHei', sans-serif; background: #0f0f1a; color: #
 .el-container { height: 100%; }
 .sidebar {
   background: #1a1a2e;
-  display: flex;
-  flex-direction: column;
+  display: flex; flex-direction: column;
   border-right: 1px solid #2a2a4a;
 }
-.logo {
-  padding: 20px 16px;
-  cursor: pointer;
-  border-bottom: 1px solid #2a2a4a;
-}
-.logo h2 { font-size: 16px; color: #409eff; text-align: center; }
+.logo { padding: 18px 14px; cursor: pointer; border-bottom: 1px solid #2a2a4a; }
+.logo h2 { font-size: 15px; color: #409eff; text-align: center; }
 .el-menu { border-right: none !important; flex: 1; }
-.sidebar-footer { padding: 12px; border-top: 1px solid #2a2a4a; }
+.sidebar-footer { padding: 10px; border-top: 1px solid #2a2a4a; }
 .task-hint { font-size: 11px; color: #888; margin-top: 4px; text-align: center; }
 .el-main { padding: 20px; overflow-y: auto; }
 </style>

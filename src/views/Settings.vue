@@ -372,4 +372,33 @@ h2 { font-size: 20px; margin-bottom: 16px; }
 h3 { font-size: 15px; margin-bottom: 12px; color: #e0e0e0; }
 .danger-zone { }
 .danger-zone h4 { color: #f56c6c; font-size: 14px; margin-bottom: 12px; }
+
+/* Tab 对比度修复 */
+:deep(.el-tabs__item) {
+  color: #9090a0;
+  font-weight: 500;
+}
+:deep(.el-tabs__item.is-active) {
+  color: #409eff;
+  font-weight: 600;
+}
+:deep(.el-tabs__item:hover) {
+  color: #c0c0d0;
+}
+:deep(.el-tabs--border-card) {
+  background: transparent;
+  border-color: #2a2a4a;
+}
+:deep(.el-tabs--border-card > .el-tabs__header) {
+  background: #1a1a2e;
+  border-bottom-color: #2a2a4a;
+}
+:deep(.el-tabs--border-card > .el-tabs__header .el-tabs__item.is-active) {
+  background: #252540;
+  border-color: #2a2a4a;
+  color: #409eff;
+}
+:deep(.el-tabs--border-card > .el-tabs__content) {
+  padding: 16px;
+}
 </style>
