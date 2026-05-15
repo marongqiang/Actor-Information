@@ -173,7 +173,7 @@ async function rescrapeMovie() {
 
 onMounted(async () => {
   await store.fetchGroups()
-  // watch(immediate) already calls doSearch() during setup, no need to duplicate here
+  doSearch()
 })
 </script>
 

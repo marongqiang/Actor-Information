@@ -152,7 +152,7 @@ async function removeFavorite() {
   ElMessage.info('取消收藏功能待实现')
 }
 
-onMounted(() => { /* watch(immediate) already calls doSearch */ })
+onMounted(() => { fetchData() })
 </script>
 
 <style scoped>
