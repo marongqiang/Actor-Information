@@ -5,14 +5,39 @@
     <div class="section">
       <h3>115 网盘登录</h3>
       <div v-if="!loggedIn">
-        <el-button type="primary" @click="startLogin" :loading="loginLoading">
-          {{ loginLoading ? '等待扫码...' : '扫码登录' }}
-        </el-button>
-        <div v-if="qrcodeUrl" style="margin-top: 16px;">
-          <p>请使用 115 手机 App 扫描二维码：</p>
-          <img :src="qrcodeUrl" style="width: 200px; border-radius: 8px;" />
-          <p style="color: #888; margin-top: 8px;">状态: {{ loginStatusText }}</p>
-        </div>
+        <el-tabs v-model="loginMethod" type="border-card" style="background: transparent;">
+          <el-tab-pane label="扫码登录" name="qrcode">
+            <el-button type="primary" @click="startLogin" :loading="loginLoading" style="margin-bottom: 12px;">
+              {{ loginLoading ? '等待扫码...' : '获取二维码' }}
+            </el-button>
+            <div v-if="qrcodeUrl" style="margin-top: 12px; text-align: center;">
+              <p>请使用 115 手机 App 扫描二维码：</p>
+              <img :src="qrcodeUrl" style="width: 200px; border-radius: 8px;" />
+              <p style="color: #888; margin-top: 8px;">状态: {{ loginStatusText }}</p>
+            </div>
+            <div v-if="qrError" style="margin-top: 12px;">
+              <el-alert :title="qrError" type="error" :closable="false" />
+              <p style="color: #888; margin-top: 8px; font-size: 13px;">
+                扫码登录可能因115 API变更而失败，建议使用「Cookie登录」方式
+              </p>
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="Cookie登录（推荐）" name="cookie">
+            <p style="color: #888; margin-bottom: 8px; font-size: 13px;">
+              从浏览器登录115网盘后，在开发者工具(F12) → Application/存储 → Cookies → 复制所有Cookie值粘贴到下方
+            </p>
+            <el-input
+              v-model="cookieInput"
+              type="textarea"
+              :rows="4"
+              placeholder="粘贴完整的Cookie字符串，例如：UID=xxx; CID=xxx; SEID=xxx; ..."
+              style="margin-bottom: 12px;"
+            />
+            <el-button type="primary" @click="loginByCookie" :loading="cookieLoading">
+              {{ cookieLoading ? '验证中...' : 'Cookie登录' }}
+            </el-button>
+          </el-tab-pane>
+        </el-tabs>
       </div>
       <div v-else>
         <el-tag type="success">已登录</el-tag>
@@ -123,7 +148,12 @@ const loginLoading = ref(false)
 const qrcodeUrl = ref('')
 const loginUid = ref('')
 const loginStatusText = ref('')
+const qrError = ref('')
 let loginTimer: ReturnType<typeof setInterval> | null = null
+
+const loginMethod = ref('cookie')
+const cookieInput = ref('')
+const cookieLoading = ref(false)
 
 const scrapeSources = ref<string[]>([])
 const tmdbApiKey = ref('')
@@ -145,14 +175,34 @@ const mergeDryRun = ref(true)
 
 async function startLogin() {
   loginLoading.value = true
+  qrError.value = ''
   try {
     const result: any = await invoke('login_qrcode')
     qrcodeUrl.value = result.qrcode_url
     loginUid.value = result.uid
     loginTimer = setInterval(checkLoginStatus, 2000)
   } catch (e: any) {
-    ElMessage.error('获取二维码失败: ' + (e.message || e))
+    const msg = e.message || e
+    qrError.value = '获取二维码失败: ' + msg
+    ElMessage.error(qrError.value)
     loginLoading.value = false
+  }
+}
+
+async function loginByCookie() {
+  if (!cookieInput.value.trim()) {
+    ElMessage.warning('请先粘贴Cookie')
+    return
+  }
+  cookieLoading.value = true
+  try {
+    await invoke('login_cookie_direct', { cookie: cookieInput.value.trim() })
+    loggedIn.value = true
+    ElMessage.success('Cookie登录成功')
+  } catch (e: any) {
+    ElMessage.error('Cookie验证失败: ' + (e.message || e))
+  } finally {
+    cookieLoading.value = false
   }
 }
 

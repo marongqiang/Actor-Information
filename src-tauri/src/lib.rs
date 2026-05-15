@@ -33,6 +33,7 @@ pub fn run() {
             commands::auth::login_qrcode,
             commands::auth::login_status,
             commands::auth::login_cookie,
+            commands::auth::login_cookie_direct,
             commands::auth::logout,
             commands::auth::check_token,
             // FS
