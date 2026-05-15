@@ -22,6 +22,13 @@
       <el-button type="primary" @click="doSearch">筛选</el-button>
     </div>
 
+    <div class="filter-bar" v-if="filterGroup || store.total > 0">
+      <span>共 <b>{{ store.total }}</b> 部</span>
+      <el-tag v-if="filterGroup" type="warning" size="small" closable @close="filterGroup=undefined;doSearch()">
+        分组: {{ store.groups.find(g=>g.id===filterGroup)?.name || filterGroup }}
+      </el-tag>
+    </div>
+
     <div v-if="store.loading" class="loading"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
 
     <div v-else class="movie-grid-wrapper">
