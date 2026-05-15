@@ -138,7 +138,7 @@ pub fn get_actresses_paginated(
         let offset = (page - 1) * page_size;
 
         // Dynamic sort
-        let valid_fields = ["name", "debut_year", "height", "bust", "waist", "hip", "cup", "movie_count", "id"];
+        let valid_fields = ["name", "debut_year", "height", "bust", "waist", "hip", "cup", "movie_count", "id", "is_pending", "source", "letter"];
         let sort_col = sort_field.as_deref().filter(|f| valid_fields.contains(f)).unwrap_or("name");
         let sort_dir = sort_order.as_deref().unwrap_or("asc");
         let order_clause = if sort_col == "movie_count" {

@@ -19,12 +19,6 @@
         </template>
       </div>
 
-      <!-- 手动输入CID（快捷跳转） -->
-      <div style="margin-top: 8px; display: flex; gap: 8px;">
-        <el-input v-model="manualCid" placeholder="粘贴CID直接跳转目录..." size="small" style="flex: 1;" />
-        <el-button size="small" @click="loadDir(manualCid); manualCid=''">跳转</el-button>
-      </div>
-
       <!-- 目录/文件列表（固定高度+滚动） -->
       <div style="max-height: 340px; overflow: auto; margin-top: 8px;">
       <el-table :data="currentList" style="width: 100%;" border resizable stripe size="small"
@@ -164,7 +158,6 @@ const taskStore = useTaskStore()
 // Navigation
 const breadcrumbs = ref<{ cid: string; name: string }[]>([])
 const currentCid = ref('0')
-const manualCid = ref('')
 const loadingRoots = ref(false)
 const loadingDirs = ref(false)
 const scanLoading = ref(false)
@@ -252,6 +245,10 @@ async function runScan() {
     }
     scanDone.value = true
     scanStatusText.value = `扫描完成，共发现 ${totalAll} 部影片`
+    // Save scan settings
+    invoke('set_config', { key: 'last_scan_cid', value: currentCid.value })
+    invoke('set_config', { key: 'last_scan_depth', value: String(scanDepth.value) })
+    invoke('set_config', { key: 'last_scan_mode', value: scanMode.value })
     lastResult.value = { total: totalAll, new: totalNew, updated: totalUpdated, deleted: 0 }
   } catch (e: any) {
     scanDialogVisible.value = false
@@ -276,6 +273,13 @@ function statusType(s: string) {
 onMounted(async () => {
   await refreshRoots()
   await taskStore.fetchPendingTasks()
+  // Restore last scan settings
+  const lastCid: string | null = await invoke('get_config', { key: 'last_scan_cid' })
+  const lastDepth: string | null = await invoke('get_config', { key: 'last_scan_depth' })
+  const lastMode: string | null = await invoke('get_config', { key: 'last_scan_mode' })
+  if (lastCid) { currentCid.value = lastCid; await loadDir(lastCid) }
+  if (lastDepth) scanDepth.value = parseInt(lastDepth)
+  if (lastMode) scanMode.value = lastMode
 })
 </script>
 

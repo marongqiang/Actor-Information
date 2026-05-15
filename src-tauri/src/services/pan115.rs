@@ -31,6 +31,8 @@ const WEBAPI_BASE: &str = "https://webapi.115.com";
 pub fn set_cookie(cookie: &str) {
     let mut c = COOKIE.lock().unwrap();
     *c = Some(cookie.to_string());
+    // Persist to config
+    let _ = crate::services::secure_config::set_secure_config("115_cookie", cookie);
 }
 
 pub fn get_cookie() -> Option<String> {
@@ -40,10 +42,19 @@ pub fn get_cookie() -> Option<String> {
 pub fn clear_cookie() {
     let mut c = COOKIE.lock().unwrap();
     *c = None;
+    let _ = crate::services::secure_config::clear_secure_config("115_cookie");
 }
 
 pub fn has_cookie() -> bool {
     COOKIE.lock().unwrap().is_some()
+}
+
+/// Restore cookie from persisted config on startup
+pub fn restore_cookie() {
+    if let Ok(Some(cookie)) = crate::services::secure_config::get_secure_config("115_cookie") {
+        set_cookie(&cookie);
+        log::info!("已从配置恢复115登录Cookie");
+    }
 }
 
 // ─── QR Code Login ───

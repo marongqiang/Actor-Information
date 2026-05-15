@@ -21,6 +21,9 @@ pub fn run() {
             // Initialize database (lazy, first access will trigger)
             let _ = &*db::DB;
 
+            // Restore persisted login
+            crate::services::pan115::restore_cookie();
+
             log::info!("智能网盘影视库 v{} 启动完成", app.package_info().version);
 
             // Build tray menu

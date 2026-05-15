@@ -153,7 +153,6 @@ function onContextMenu(e: MouseEvent, movie: MovieItem) {
 async function addToFavGroup(groupId: number) {
   if (!ctx.movie) return
   await invoke('add_movies_to_group', { groupId, fileIds: [ctx.movie.file_id] })
-  await invoke('set_config', { key: `fav_${ctx.movie.file_id}`, value: '1' })
   ElMessage.success('已添加到收藏分组')
   ctx.visible = false
 }
