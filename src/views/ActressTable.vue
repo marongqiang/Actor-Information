@@ -28,12 +28,12 @@
         show-overflow-tooltip
       >
         <el-table-column type="selection" width="40" />
-        <el-table-column prop="name" label="姓名" width="140" sortable="custom">
+        <el-table-column prop="name" label="姓名" width="160" sortable="custom">
           <template #default="{ row }">
             <span class="name-cell">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="aliases" label="别名" min-width="120" sortable="custom">
+        <el-table-column prop="aliases" label="别名" width="160" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_aliases`">
               <el-input v-model="editValue" size="small" @blur="saveCell(row, 'aliases')" @keyup.enter="saveCell(row, 'aliases')" ref="editInputRef" />
@@ -41,8 +41,10 @@
             <span v-else class="editable-cell">{{ row._aliases?.join(', ') || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="source" label="来源" width="70" sortable="custom" />
-        <el-table-column prop="local_folder_name" label="图片目录" width="140" sortable="custom" show-overflow-tooltip />
+        <el-table-column prop="source" label="来源" width="70" sortable="custom">
+          <template #default="{ row }">{{ row.source === 'local_folder' ? '本地' : '网络' }}</template>
+        </el-table-column>
+        <el-table-column prop="local_folder_name" label="图片目录" width="160" sortable="custom" show-overflow-tooltip />
         <el-table-column prop="is_pending" label="待审核" width="75" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_is_pending`">
@@ -53,7 +55,7 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="debut_year" label="出道年" width="80" sortable="custom">
+        <el-table-column prop="debut_year" label="出道年" width="85" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_debut_year`">
               <el-input-number v-model="editNum" size="small" controls-position="right" :min="1970" :max="2030" @blur="saveCell(row, 'debut_year')" />
@@ -61,7 +63,7 @@
             <span v-else class="editable-cell">{{ row.debut_year || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="height" label="身高" width="70" sortable="custom">
+        <el-table-column prop="height" label="身高" width="75" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_height`">
               <el-input-number v-model="editNum" size="small" controls-position="right" :min="100" :max="200" @blur="saveCell(row, 'height')" />
@@ -69,7 +71,7 @@
             <span v-else class="editable-cell">{{ row.height || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="bust" label="胸围" width="65" sortable="custom">
+        <el-table-column prop="bust" label="胸围" width="70" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_bust`">
               <el-input-number v-model="editNum" size="small" controls-position="right" :min="50" :max="200" @blur="saveCell(row, 'bust')" />
@@ -77,7 +79,7 @@
             <span v-else class="editable-cell">{{ row.bust || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="waist" label="腰围" width="65" sortable="custom">
+        <el-table-column prop="waist" label="腰围" width="70" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_waist`">
               <el-input-number v-model="editNum" size="small" controls-position="right" :min="40" :max="150" @blur="saveCell(row, 'waist')" />
@@ -85,7 +87,7 @@
             <span v-else class="editable-cell">{{ row.waist || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="hip" label="臀围" width="65" sortable="custom">
+        <el-table-column prop="hip" label="臀围" width="70" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_hip`">
               <el-input-number v-model="editNum" size="small" controls-position="right" :min="50" :max="200" @blur="saveCell(row, 'hip')" />
@@ -93,7 +95,7 @@
             <span v-else class="editable-cell">{{ row.hip || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="cup" label="罩杯" width="70" sortable="custom">
+        <el-table-column prop="cup" label="罩杯" width="75" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_cup`">
               <el-input v-model="editValue" size="small" @blur="saveCell(row, 'cup')" @keyup.enter="saveCell(row, 'cup')" />
@@ -101,7 +103,7 @@
             <span v-else class="editable-cell">{{ row.cup || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="movie_count" label="作品数" width="75" sortable="custom" />
+        <el-table-column prop="movie_count" label="作品数" width="80" sortable="custom" />
       </el-table>
     </div>
 
@@ -261,12 +263,9 @@ async function batchDelete() {
 }
 
 async function deleteAll() {
-  await ElMessageBox.confirm('确定删除全部演员数据？此操作不可恢复！', '危险操作', { type: 'error', confirmButtonClass: 'el-button--danger' })
-  const allIds = store.actresses.map(a => a.id)
-  if (allIds.length) {
-    const count = await store.deleteActresses(allIds)
-    ElMessage.success(`已删除 ${count} 位演员`); doSearch()
-  }
+  await ElMessageBox.confirm('确定删除数据库中全部演员数据？此操作不可恢复！', '危险操作', { type: 'error', confirmButtonClass: 'el-button--danger' })
+  const count = await invoke('delete_all_actresses')
+  ElMessage.success(`已删除 ${count} 位演员`); doSearch()
 }
 
 onMounted(() => { fetchData(1) })
@@ -279,7 +278,7 @@ onMounted(() => { fetchData(1) })
 .batch-actions { color: #409eff; font-size: 12px; margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .table-wrapper { flex: 1; overflow: auto; }
 .table-footer { flex-shrink: 0; display: flex; justify-content: center; padding: 10px 0; }
-.name-cell { color: #e0e0e0; font-weight: 500; }
+.name-cell { color: #000; font-weight: 600; }
 .editable-cell { cursor: pointer; padding: 2px 4px; border-radius: 2px; }
 .editable-cell:hover { background: #252540; }
 </style>

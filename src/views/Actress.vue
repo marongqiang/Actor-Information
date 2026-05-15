@@ -81,6 +81,7 @@ async function addToGroupById(groupId: number) {
   if (!ctx.actress) return
   ctx.visible = false
   await invoke('add_actresses_to_group', { groupId, actressIds: [ctx.actress.id] })
+  window.dispatchEvent(new CustomEvent('groups-changed'))
   ElMessage.success(`已添加到分组`)
 }
 

@@ -77,6 +77,7 @@ pub fn run() {
             commands::actress_merge::find_actress,
             commands::actress_merge::update_actress,
             commands::actress_merge::delete_actresses,
+            commands::actress_merge::delete_all_actresses,
             commands::actress_merge::get_actress_aliases,
             commands::actress_merge::add_actress_alias,
             commands::actress_merge::merge_actresses,

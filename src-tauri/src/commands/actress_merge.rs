@@ -230,6 +230,16 @@ pub fn delete_actresses(ids: Vec<i64>) -> Result<i64, crate::utils::error::Comma
 }
 
 #[tauri::command]
+pub fn delete_all_actresses() -> Result<i64, crate::utils::error::CommandError> {
+    db::with_db(|conn| {
+        let count = conn.execute("DELETE FROM av_actors", [])?;
+        conn.execute("DELETE FROM actress_aliases", [])?;
+        conn.execute("DELETE FROM actress_group_members", [])?;
+        Ok(count as i64)
+    })
+}
+
+#[tauri::command]
 pub fn get_actress_aliases(actress_id: i64) -> Result<Vec<String>, crate::utils::error::CommandError> {
     db::with_db(|conn| queries::get_actress_aliases(conn, actress_id))
 }

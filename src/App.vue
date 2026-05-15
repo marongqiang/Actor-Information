@@ -8,7 +8,7 @@
           <!-- 海报墙 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/' }"
-              @click="expanded.poster = !expanded.poster"
+              @click="navigateAndToggle('poster', '/')"
               @contextmenu.prevent="openGroupMenu($event, 'poster')">
               <el-icon><PictureFilled /></el-icon><span>海报墙</span>
               <el-icon class="arrow" :class="{ open: expanded.poster }"><ArrowRight /></el-icon>
@@ -22,7 +22,7 @@
           <!-- 收藏影片 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/favorites' }"
-              @click="expanded.favorites = !expanded.favorites"
+              @click="navigateAndToggle('favorites', '/favorites')"
               @contextmenu.prevent="openGroupMenu($event, 'favorite')">
               <el-icon><StarFilled /></el-icon><span>收藏影片</span>
               <el-icon class="arrow" :class="{ open: expanded.favorites }"><ArrowRight /></el-icon>
@@ -36,7 +36,7 @@
           <!-- 演员库 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/actress' }"
-              @click="expanded.actress = !expanded.actress"
+              @click="navigateAndToggle('actress', '/actress')"
               @contextmenu.prevent="openGroupMenu($event, 'actress')">
               <el-icon><UserFilled /></el-icon><span>演员库</span>
               <el-icon class="arrow" :class="{ open: expanded.actress }"><ArrowRight /></el-icon>
@@ -93,7 +93,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, reactive } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -114,6 +114,11 @@ const ctx = reactive({ visible: false, x: 0, y: 0, type: 'poster' as GroupCtx, g
 
 const groupFormDialog = ref(false); const groupFormTitle = ref(''); const groupFormName = ref('')
 let groupFormMode: 'add' | 'rename' | 'delete' = 'add'; let editingGroupId: number | null = null
+
+function navigateAndToggle(section: 'poster' | 'favorites' | 'actress', route: string) {
+  expanded[section] = !expanded[section]; $router.push(route)
+}
+const $router = useRouter()
 
 function openGroupMenu(e: MouseEvent, type: GroupCtx) {
   e.preventDefault(); ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.type = type; ctx.groupId = null; ctx.groupName = ''
@@ -180,6 +185,7 @@ async function fetchGroups() {
 
 onMounted(async () => {
   await fetchGroups()
+  window.addEventListener('groups-changed', () => fetchGroups())
   await listen('scan-progress', (event: any) => {
     scanTask.value = { id: '', type: 'scan', status: 'running', progress: event.payload.percent || 0, created_at: 0, updated_at: 0 }
   })
