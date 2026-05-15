@@ -2,6 +2,7 @@ use crate::db::{self, now_ts};
 use crate::services::pan115::{self, FileInfo};
 use crate::utils::error::{CommandError, CommandResult};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 #[derive(Serialize)]
@@ -16,9 +17,10 @@ const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "rmvb", "flv", "wmv", "ts", "iso", "m2ts",
 ];
 
-// 限流：每秒最多3次请求
+// 限流：每秒1次请求，每10次额外冷却3秒，防止115返回405
 static LAST_REQUEST: once_cell::sync::Lazy<tokio::sync::Mutex<Instant>> = once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(Instant::now()));
-const MIN_INTERVAL: Duration = Duration::from_millis(350);
+static REQUEST_COUNT: once_cell::sync::Lazy<tokio::sync::Mutex<u32>> = once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(0));
+const MIN_INTERVAL: Duration = Duration::from_millis(1000);  // 1 request/sec
 
 async fn rate_limit() {
     let mut last = LAST_REQUEST.lock().await;
@@ -27,6 +29,15 @@ async fn rate_limit() {
         tokio::time::sleep(MIN_INTERVAL - elapsed).await;
     }
     *last = Instant::now();
+    // Every 10 requests, add 3s cooldown
+    let mut count = REQUEST_COUNT.lock().await;
+    *count += 1;
+    if *count % 10 == 0 {
+        drop(count);
+        drop(last);
+        log::info!("扫描限流: 已请求{}次，冷却3秒...", *REQUEST_COUNT.lock().await);
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
 }
 
 pub async fn scan_directory(
@@ -35,7 +46,8 @@ pub async fn scan_directory(
     mode: &str,
 ) -> Result<ScanResult, CommandError> {
     let mut all_files: Vec<FileInfo> = Vec::new();
-    collect_video_files(cid, depth, 0, &mut all_files).await?;
+    let mut scanned = HashSet::new();
+    collect_video_files(cid, depth, 0, &mut all_files, &mut scanned).await?;
 
     log::info!("扫描完成: {} 个目录中共发现 {} 个视频文件", cid, all_files.len());
     let total = all_files.len() as i64;
@@ -145,8 +157,9 @@ async fn collect_video_files(
     max_depth: i32,
     current_depth: i32,
     files: &mut Vec<FileInfo>,
+    scanned: &mut HashSet<String>,
 ) -> Result<(), CommandError> {
-    if current_depth > max_depth {
+    if current_depth > max_depth || !scanned.insert(cid.to_string()) {
         return Ok(());
     }
 
@@ -189,7 +202,7 @@ async fn collect_video_files(
                 if item.cid.is_empty() || item.cid == "0" {
                     continue;
                 }
-                if let Err(e) = Box::pin(collect_video_files(&item.cid, max_depth, current_depth + 1, files)).await {
+                if let Err(e) = Box::pin(collect_video_files(&item.cid, max_depth, current_depth + 1, files, scanned)).await {
                     log::warn!("跳过子目录 {}: {}", item.name, e);
                 }
             } else if is_video_file(&item.name) {
