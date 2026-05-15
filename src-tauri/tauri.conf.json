@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/dev/crates/tauri-config-schema/schema.json",
   "productName": "智能网盘影视库",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "identifier": "com.smart-media-vault.app",
   "build": {
     "frontendDist": "../dist",
