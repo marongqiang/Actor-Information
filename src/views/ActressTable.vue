@@ -19,7 +19,7 @@
         ref="tableRef"
         :data="store.actresses"
         v-loading="store.loading"
-        style="width: 100%"
+        style="min-width: 1200px"
         border stripe resizable
         :default-sort="{ prop: 'name', order: 'ascending' }"
         @selection-change="onSelectionChange"
