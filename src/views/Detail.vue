@@ -20,7 +20,12 @@
         <p class="overview" v-if="movie.overview">{{ movie.overview }}</p>
         <div class="detail-meta">
           <p v-if="movie.director"><strong>导演：</strong>{{ movie.director }}</p>
-          <p v-if="movie.actors?.length"><strong>演员：</strong>{{ movie.actors.join(' / ') }}</p>
+          <p v-if="movie.actors?.length"><strong>演员：</strong>
+            <span v-for="(name, i) in movie.actors" :key="name">
+              <a class="actor-link" @click.stop="goActress(name)">{{ name }}</a>
+              <span v-if="i < movie.actors.length - 1"> / </span>
+            </span>
+          </p>
           <p><strong>文件：</strong>{{ movie.file_name }}</p>
           <p><strong>大小：</strong>{{ formatSize(movie.file_size) }}</p>
         </div>
@@ -49,6 +54,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { ElMessage } from 'element-plus'
 import type { MovieDetail, GroupItem } from '@/types'
 import { Loading, PictureFilled, VideoPlay, Connection } from '@element-plus/icons-vue'
 
@@ -78,6 +84,12 @@ async function toggleHidden() {
     await invoke('hide_movies', { fileIds: [movie.value.file_id] })
   }
   movie.value.is_hidden = !movie.value.is_hidden
+}
+
+async function goActress(name: string) {
+  const found: any = await invoke('find_actress', { name })
+  if (found?.id) { router.push(`/actress/${found.id}`) }
+  else { ElMessage.info(`未找到演员: ${name}`) }
 }
 
 async function playExternal() {

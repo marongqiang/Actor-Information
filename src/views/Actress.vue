@@ -11,7 +11,7 @@
     <div v-else class="actress-grid">
       <div v-for="actress in store.actresses" :key="actress.id" class="actress-card"
           @contextmenu.prevent="onContextMenu($event, actress)">
-        <div class="avatar-container">
+        <div class="avatar-container" @click.stop="goDetail(actress.id)">
           <img v-if="actress.avatar_local" :src="assetUrl(actress.avatar_local)" class="avatar-img" />
           <div v-else class="avatar-placeholder">
             <el-icon :size="36"><UserFilled /></el-icon>
@@ -40,9 +40,13 @@
 
     <!-- 右键菜单 -->
     <div v-if="ctx.visible" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
-      <div class="ctx-item menu-title">添加到分组</div>
-      <div v-for="g in actressGroups" :key="'am_'+g.id" class="ctx-item" @click="addToGroupById(g.id)">📁 {{ g.name }}</div>
-      <div v-if="!actressGroups.length" class="ctx-item" style="color: #666;">暂无分组，请先在侧边栏创建</div>
+      <div class="ctx-submenu" @mouseenter="ctxSub = 'group'" @mouseleave="ctxSub = ''">
+        <div class="ctx-item">📁 添加到分组 ▸</div>
+        <div v-if="ctxSub === 'group'" class="sub-menu">
+          <div v-for="g in actressGroups" :key="'ag_'+g.id" class="ctx-item" @click="addToGroupById(g.id)">{{ g.name }}</div>
+          <div v-if="!actressGroups.length" class="ctx-item" style="color:#666;">暂无分组</div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -50,7 +54,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useActressStore } from '@/stores/actress'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
@@ -58,6 +62,7 @@ import { Loading, UserFilled } from '@element-plus/icons-vue'
 import type { ActressItem, ActressGroupItem } from '@/types'
 
 const route = useRoute()
+const router = useRouter()
 const store = useActressStore()
 const search = ref('')
 const page = ref(1)
@@ -71,14 +76,15 @@ watch(() => route.query.group_id, (val) => {
 
 // Context menu
 const ctx = reactive({ visible: false, x: 0, y: 0, actress: null as ActressItem | null })
-
-// Actress groups for context menu
+const ctxSub = ref('')
 const actressGroups = ref<ActressGroupItem[]>([])
 
 function assetUrl(path: string) { return convertFileSrc(path) }
 
 function doSearch() { page.value = 1; store.fetchPaginated(1, 20, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+
+function goDetail(id: number) { router.push(`/actress/${id}`) }
 
 function onContextMenu(e: MouseEvent, actress: ActressItem) {
   ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.actress = actress
@@ -121,7 +127,9 @@ onMounted(() => { store.fetchPaginated(1, 20) })
 .actress-info { padding: 8px; }
 .actress-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .actress-meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
-.context-menu { position: fixed; z-index: 9999; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-.ctx-item { padding: 8px 16px; cursor: pointer; font-size: 13px; color: #c0c0d0; }
+.context-menu { position: fixed; z-index: 9999; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.ctx-item { padding: 8px 16px; cursor: pointer; font-size: 13px; color: #c0c0d0; white-space: nowrap; }
 .ctx-item:hover { background: #3a3a5a; color: #fff; }
+.ctx-submenu { position: relative; }
+.sub-menu { position: absolute; left: 100%; top: 0; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 </style>

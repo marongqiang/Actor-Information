@@ -29,6 +29,11 @@ const router = createRouter({
       component: () => import('@/views/Actress.vue'),
     },
     {
+      path: '/actress/:id',
+      name: 'actress-detail',
+      component: () => import('@/views/ActressDetail.vue'),
+    },
+    {
       path: '/actress-table',
       name: 'actress-table',
       component: () => import('@/views/ActressTable.vue'),
