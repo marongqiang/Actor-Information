@@ -57,12 +57,14 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
             .unwrap_or_default();
         total += 1;
 
+        let full_path = path.to_string_lossy().to_string();
+
         // Check if an actress with this folder_name already exists
         let exists = db::with_db(|conn| {
             let exists: bool = conn
                 .query_row(
                     "SELECT COUNT(*) > 0 FROM av_actors WHERE local_folder_name = ?1 OR name = ?1",
-                    [&folder_name],
+                    [&full_path],
                     |row| row.get(0),
                 )
                 .unwrap_or(false);
@@ -80,7 +82,7 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
                 conn.execute(
                     "INSERT INTO av_actors (name, avatar_local, local_folder_name, is_pending, source, letter, created_at)
                      VALUES (?1, ?2, ?3, 0, 'local_folder', ?4, ?5)",
-                    rusqlite::params![folder_name, avatar.as_deref(), folder_name, letter, now],
+                    rusqlite::params![folder_name, avatar.as_deref(), full_path, letter, now],
                 )?;
                 Ok(())
             })?;

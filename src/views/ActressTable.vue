@@ -58,7 +58,7 @@
         <el-table-column prop="debut_year" label="出道年" width="85" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_debut_year`">
-              <el-input-number v-model="editNum" size="small" controls-position="right" :min="1970" :max="2030" @blur="saveCell(row, 'debut_year')" />
+              <el-input v-model="editValue" size="small" class="edit-input" @blur="saveCell(row, 'debut_year')" @keyup.enter="saveCell(row, 'debut_year')" />
             </template>
             <span v-else class="editable-cell">{{ row.debut_year || '-' }}</span>
           </template>
@@ -66,7 +66,7 @@
         <el-table-column prop="height" label="身高" width="75" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_height`">
-              <el-input-number v-model="editNum" size="small" controls-position="right" :min="100" :max="200" @blur="saveCell(row, 'height')" />
+              <el-input v-model="editValue" size="small" class="edit-input" @blur="saveCell(row, 'height')" @keyup.enter="saveCell(row, 'height')" />
             </template>
             <span v-else class="editable-cell">{{ row.height || '-' }}</span>
           </template>
@@ -74,7 +74,7 @@
         <el-table-column prop="bust" label="胸围" width="70" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_bust`">
-              <el-input-number v-model="editNum" size="small" controls-position="right" :min="50" :max="200" @blur="saveCell(row, 'bust')" />
+              <el-input v-model="editValue" size="small" class="edit-input" @blur="saveCell(row, 'bust')" @keyup.enter="saveCell(row, 'bust')" />
             </template>
             <span v-else class="editable-cell">{{ row.bust || '-' }}</span>
           </template>
@@ -82,7 +82,7 @@
         <el-table-column prop="waist" label="腰围" width="70" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_waist`">
-              <el-input-number v-model="editNum" size="small" controls-position="right" :min="40" :max="150" @blur="saveCell(row, 'waist')" />
+              <el-input v-model="editValue" size="small" class="edit-input" @blur="saveCell(row, 'waist')" @keyup.enter="saveCell(row, 'waist')" />
             </template>
             <span v-else class="editable-cell">{{ row.waist || '-' }}</span>
           </template>
@@ -90,7 +90,7 @@
         <el-table-column prop="hip" label="臀围" width="70" sortable="custom">
           <template #default="{ row }">
             <template v-if="editingCell === `${row.id}_hip`">
-              <el-input-number v-model="editNum" size="small" controls-position="right" :min="50" :max="200" @blur="saveCell(row, 'hip')" />
+              <el-input v-model="editValue" size="small" class="edit-input" @blur="saveCell(row, 'hip')" @keyup.enter="saveCell(row, 'hip')" />
             </template>
             <span v-else class="editable-cell">{{ row.hip || '-' }}</span>
           </template>
@@ -165,10 +165,9 @@ watch(() => route.query.group_id, (val) => {
   doSearch()
 }, { immediate: true })
 
-// Inline editing
+// Inline editing (统一用文本输入)
 const editingCell = ref('')
 const editValue = ref('')
-const editNum = ref(0)
 const editBool = ref(false)
 const editInputRef = ref()
 
@@ -205,10 +204,8 @@ function onCellDblClick(row: any, col: any) {
     editValue.value = row._aliases?.join(', ') || ''
   } else if (col.property === 'is_pending') {
     editBool.value = row.is_pending
-  } else if (col.property === 'cup') {
-    editValue.value = row.cup || ''
   } else {
-    editNum.value = row[col.property] || 0
+    editValue.value = row[col.property] != null ? String(row[col.property]) : ''
   }
   nextTick(() => editInputRef.value?.focus?.())
 }
@@ -216,30 +213,24 @@ function onCellDblClick(row: any, col: any) {
 async function saveCell(row: any, field: string) {
   const cellKey = `${row.id}_${field}`
   if (editingCell.value !== cellKey) return
-  let newVal: any
   if (field === 'aliases') {
-    // Parse comma-separated aliases, check duplicates within the same row
     const parts = editValue.value.split(',').map((s: string) => s.trim()).filter(Boolean)
     const unique = [...new Set(parts)]
     if (unique.length !== parts.length) ElMessage.warning('别名中存在重复，已自动去重')
-    newVal = unique.join(', ')
     row._aliases = unique
-    // Sync aliases to backend: remove old, add all new
     const oldAliases = await store.getAliases(row.id)
-    for (const a of oldAliases) {
-      // Can't delete individual aliases easily, skip for now
-    }
     for (const a of unique) {
       if (!oldAliases.includes(a)) await store.addAlias(row.id, a)
     }
   } else if (field === 'is_pending') {
-    newVal = editBool.value
-    row[field] = newVal
-    await store.updateActress(row.id, { is_pending: newVal } as any)
+    row[field] = editBool.value
+    await store.updateActress(row.id, { is_pending: editBool.value } as any)
   } else {
-    newVal = editNum.value
-    row[field] = newVal
-    await store.updateActress(row.id, { [field]: newVal })
+    // Numeric or text: parse number for numeric fields
+    const numFields = ['debut_year', 'height', 'bust', 'waist', 'hip']
+    const val = numFields.includes(field) ? parseInt(editValue.value) || 0 : editValue.value
+    row[field] = val
+    await store.updateActress(row.id, { [field]: val })
   }
   editingCell.value = ''
 }
@@ -287,6 +278,7 @@ onMounted(() => { fetchData(1) })
 .table-wrapper { flex: 1; overflow: auto; }
 .table-footer { flex-shrink: 0; display: flex; justify-content: center; padding: 10px 0; }
 .name-cell { color: #000; font-weight: 600; }
-.editable-cell { cursor: pointer; padding: 2px 4px; border-radius: 2px; }
+.editable-cell { cursor: pointer; padding: 2px 4px; border-radius: 2px; display: block; }
 .editable-cell:hover { background: #252540; }
+:deep(.edit-input .el-input__inner) { text-align: center; }
 </style>
