@@ -68,22 +68,23 @@
 
     <!-- 右键菜单 -->
     <div v-if="ctx.visible" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
-      <div class="ctx-item" @click="addToFavorites">⭐ 收藏</div>
-      <div class="ctx-item" @click="addMovieToGroup">📁 添加到分组</div>
-      <div class="ctx-item" @click="toggleHide">👁 {{ ctx.movie?.is_hidden ? '取消隐藏' : '隐藏' }}</div>
+      <div class="ctx-submenu" @mouseenter="ctxSub = 'fav'" @mouseleave="ctxSub = ''">
+        <div class="ctx-item">⭐ 添加到收藏 ▸</div>
+        <div v-if="ctxSub === 'fav'" class="sub-menu">
+          <div v-for="g in favGroups" :key="'f_'+g.id" class="ctx-item" @click="addToFavGroup(g.id)">{{ g.name }}</div>
+          <div v-if="!favGroups.length" class="ctx-item" style="color:#666;">暂无收藏分组</div>
+        </div>
+      </div>
+      <div class="ctx-submenu" @mouseenter="ctxSub = 'poster'" @mouseleave="ctxSub = ''">
+        <div class="ctx-item">📁 添加到分组 ▸</div>
+        <div v-if="ctxSub === 'poster'" class="sub-menu">
+          <div v-for="g in posterGroups" :key="'p_'+g.id" class="ctx-item" @click="addToPosterGroup(g.id)">{{ g.name }}</div>
+          <div v-if="!posterGroups.length" class="ctx-item" style="color:#666;">暂无海报墙分组</div>
+        </div>
+      </div>
       <div class="ctx-item" @click="rescrapeMovie">🔄 重新刮削</div>
     </div>
 
-    <!-- 分组选择对话框 -->
-    <el-dialog v-model="groupSelectDialog" title="选择分组" width="360px">
-      <el-select v-model="selectedGroupId" placeholder="选择目标分组" style="width: 100%;" size="small">
-        <el-option v-for="g in store.groups" :key="g.id" :label="g.name" :value="g.id" />
-      </el-select>
-      <template #footer>
-        <el-button @click="groupSelectDialog = false">取消</el-button>
-        <el-button type="primary" @click="confirmAddToGroup">确定</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -94,7 +95,7 @@ import { useLibraryStore } from '@/stores/library'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, PictureFilled } from '@element-plus/icons-vue'
-import type { MovieItem } from '@/types'
+import type { MovieItem, GroupItem } from '@/types'
 
 const route = useRoute()
 const store = useLibraryStore()
@@ -112,8 +113,9 @@ watch(() => route.query.group_id, (val) => {
 
 // Context menu
 const ctx = reactive({ visible: false, x: 0, y: 0, movie: null as MovieItem | null })
-const groupSelectDialog = ref(false)
-const selectedGroupId = ref<number | null>(null)
+const ctxSub = ref('')
+const favGroups = ref<GroupItem[]>([])
+const posterGroups = ref<GroupItem[]>([])
 
 const allGenres = ['动作', '科幻', '喜剧', '爱情', '恐怖', '剧情', '悬疑', '动画', '纪录片']
 const years = computed(() => {
@@ -143,35 +145,23 @@ function onPageChange(page: number) {
 // Context menu handlers
 function onContextMenu(e: MouseEvent, movie: MovieItem) {
   ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.movie = movie
+  // Load groups
+  invoke('get_groups', { category: 'favorite' }).then((g: any) => favGroups.value = g || [])
+  invoke('get_groups', { category: 'manual' }).then((g: any) => posterGroups.value = g || [])
 }
 
-async function addToFavorites() {
-  if (ctx.movie) {
-    await invoke('set_config', { key: `fav_${ctx.movie.file_id}`, value: '1' })
-    ElMessage.success('已添加到收藏')
-  }
+async function addToFavGroup(groupId: number) {
+  if (!ctx.movie) return
+  await invoke('add_movies_to_group', { groupId, fileIds: [ctx.movie.file_id] })
+  await invoke('set_config', { key: `fav_${ctx.movie.file_id}`, value: '1' })
+  ElMessage.success('已添加到收藏分组')
   ctx.visible = false
 }
 
-function addMovieToGroup() {
-  ctx.visible = false; groupSelectDialog.value = true
-}
-
-async function confirmAddToGroup() {
-  if (!selectedGroupId.value || !ctx.movie) return
-  await invoke('add_movies_to_group', { groupId: selectedGroupId.value, fileIds: [ctx.movie.file_id] })
-  ElMessage.success('已添加到分组')
-  groupSelectDialog.value = false
-}
-
-async function toggleHide() {
+async function addToPosterGroup(groupId: number) {
   if (!ctx.movie) return
-  if (ctx.movie.is_hidden) {
-    await store.unhideMovies([ctx.movie.file_id])
-  } else {
-    await store.toggleHidden([ctx.movie.file_id])
-  }
-  ElMessage.success(ctx.movie.is_hidden ? '已取消隐藏' : '已隐藏')
+  await invoke('add_movies_to_group', { groupId, fileIds: [ctx.movie.file_id] })
+  ElMessage.success('已添加到分组')
   ctx.visible = false
 }
 
@@ -213,7 +203,9 @@ onMounted(async () => {
 .movie-info { padding: 8px; }
 .movie-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .movie-meta { font-size: 11px; color: #888; margin-top: 4px; display: flex; gap: 8px; }
-.context-menu { position: fixed; z-index: 9999; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
-.ctx-item { padding: 8px 16px; cursor: pointer; font-size: 13px; color: #c0c0d0; }
+.context-menu { position: fixed; z-index: 9999; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.ctx-item { padding: 8px 16px; cursor: pointer; font-size: 13px; color: #c0c0d0; white-space: nowrap; }
 .ctx-item:hover { background: #3a3a5a; color: #fff; }
+.ctx-submenu { position: relative; }
+.sub-menu { position: absolute; left: 100%; top: 0; background: #252540; border: 1px solid #3a3a5a; border-radius: 4px; min-width: 140px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 </style>
