@@ -24,8 +24,6 @@ pub struct MovieItem {
     pub is_hidden: bool,
     pub progress: Option<i64>,
     pub duration: Option<i64>,
-    pub group_names: Vec<String>,     // 所属分组名称列表
-    pub is_favorite: bool,            // 是否收藏（在favorite类型分组中）
 }
 
 #[derive(Serialize)]
@@ -59,7 +57,6 @@ pub fn get_movies(
         )?;
 
         let movies = rows.into_iter().map(|r| {
-            let group_info = get_movie_group_info(conn, &r.file_id);
             MovieItem {
                 file_id: r.file_id,
                 title: r.title,
@@ -70,8 +67,6 @@ pub fn get_movies(
                 is_hidden: r.is_hidden,
                 progress: Some(r.progress),
                 duration: Some(r.duration),
-                group_names: group_info.0,
-                is_favorite: group_info.1,
             }
         }).collect();
 
