@@ -15,7 +15,8 @@
             </div>
             <template v-if="expanded.poster">
               <div v-for="g in posterGroups" :key="'pg_'+g.id" class="nav-sub-item"
-                @click="$router.push(`/?group_id=${g.id}`)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
+                @click="$router.push(`/?group_id=${g.id}`)"
+                @contextmenu.prevent.stop="onGroupItemCtx($event, 'poster', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
 
@@ -29,7 +30,8 @@
             </div>
             <template v-if="expanded.favorites">
               <div v-for="g in favGroups" :key="'fg_'+g.id" class="nav-sub-item"
-                @click="$router.push(`/favorites?group_id=${g.id}`)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
+                @click="$router.push(`/favorites?group_id=${g.id}`)"
+                @contextmenu.prevent.stop="onGroupItemCtx($event, 'favorite', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
 
@@ -45,7 +47,8 @@
               <div class="nav-sub-item" :class="{ active: currentRoute === '/actress' }" @click="$router.push('/actress')">演员墙</div>
               <div class="nav-sub-item" :class="{ active: currentRoute === '/actress-table' }" @click="$router.push('/actress-table')">演员表格</div>
               <div v-for="g in actressGroups" :key="'ag_'+g.id" class="nav-sub-item"
-                @click="$router.push(`/actress-table?group_id=${g.id}`)">{{ g.name }}<span class="badge">{{ g.member_count || 0 }}</span></div>
+                @click="$router.push(`/actress-table?group_id=${g.id}`)"
+                @contextmenu.prevent.stop="onGroupItemCtx($event, 'actress', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.member_count || 0 }}</span></div>
             </template>
           </div>
 
@@ -68,11 +71,14 @@
       <el-main><router-view /></el-main>
     </el-container>
 
-    <!-- 右键菜单 -->
-    <div v-if="ctx.visible" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
+    <!-- 右键菜单：入口 → 新增分组 -->
+    <div v-if="ctx.visible && !ctx.groupId" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
       <div class="ctx-item" @click="showAddGroup">➕ 新增分组</div>
-      <div class="ctx-item" @click="showRenameGroup">✏️ 重命名分组</div>
-      <div class="ctx-item danger" @click="showDeleteGroup">🗑️ 删除分组</div>
+    </div>
+    <!-- 右键菜单：具体分组 → 重命名/删除 -->
+    <div v-if="ctx.visible && ctx.groupId" class="context-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" @mouseleave="ctx.visible = false">
+      <div class="ctx-item" @click="renameCtxGroup">✏️ 重命名</div>
+      <div class="ctx-item danger" @click="deleteCtxGroup">🗑️ 删除</div>
     </div>
 
     <el-dialog v-model="groupFormDialog" :title="groupFormTitle" width="380px">
@@ -104,16 +110,19 @@ const favGroups = ref<GroupItem[]>([])
 const actressGroups = ref<ActressGroupItem[]>([])
 
 type GroupCtx = 'poster' | 'favorite' | 'actress'
-const ctx = reactive({ visible: false, x: 0, y: 0, type: 'poster' as GroupCtx })
+const ctx = reactive({ visible: false, x: 0, y: 0, type: 'poster' as GroupCtx, groupId: null as number | null, groupName: '' })
 
 const groupFormDialog = ref(false); const groupFormTitle = ref(''); const groupFormName = ref('')
 let groupFormMode: 'add' | 'rename' | 'delete' = 'add'; let editingGroupId: number | null = null
 
 function openGroupMenu(e: MouseEvent, type: GroupCtx) {
-  e.preventDefault(); ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.type = type
+  e.preventDefault(); ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.type = type; ctx.groupId = null; ctx.groupName = ''
 }
 
-function currentGrp() { return ctx.type === 'actress' ? actressGroups.value : (ctx.type === 'favorite' ? favGroups.value : posterGroups.value) as any[] }
+function onGroupItemCtx(e: MouseEvent, type: GroupCtx, id: number, name: string) {
+  e.preventDefault(); e.stopPropagation()
+  ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.type = type; ctx.groupId = id; ctx.groupName = name
+}
 
 function showAddGroup() {
   ctx.visible = false; groupFormMode = 'add'; editingGroupId = null
@@ -121,29 +130,18 @@ function showAddGroup() {
   groupFormTitle.value = `新建${label}分组`; groupFormName.value = ''; groupFormDialog.value = true
 }
 
-async function showRenameGroup() {
+function renameCtxGroup() {
   ctx.visible = false
-  const groups = currentGrp()
-  if (!groups.length) { ElMessage.warning('暂无分组'); return }
-  const { value: sel } = await ElMessageBox.prompt('输入要重命名的分组名称（精确匹配）', '选择分组', { inputType: 'text' })
-  if (!sel) return
-  const found = groups.find((g: any) => g.name === sel)
-  if (!found) { ElMessage.warning('未找到该分组'); return }
-  groupFormMode = 'rename'; editingGroupId = found.id
-  groupFormTitle.value = `重命名分组「${found.name}」`; groupFormName.value = found.name; groupFormDialog.value = true
+  groupFormMode = 'rename'; editingGroupId = ctx.groupId
+  groupFormTitle.value = `重命名分组「${ctx.groupName}」`; groupFormName.value = ctx.groupName; groupFormDialog.value = true
 }
 
-async function showDeleteGroup() {
+async function deleteCtxGroup() {
   ctx.visible = false
-  const groups = currentGrp()
-  if (!groups.length) { ElMessage.warning('暂无分组'); return }
-  const { value: sel } = await ElMessageBox.prompt('输入要删除的分组名称（精确匹配）', '删除分组', { inputType: 'text' })
-  if (!sel) return
-  const found = groups.find((g: any) => g.name === sel)
-  if (!found) { ElMessage.warning('未找到该分组'); return }
-  await ElMessageBox.confirm(`确定删除分组「${found.name}」？`, '确认删除', { type: 'warning' })
-  if (ctx.type === 'actress') { await invoke('delete_actress_group', { groupId: found.id }) }
-  else { await invoke('delete_group', { groupId: found.id }) }
+  if (!ctx.groupId) return
+  await ElMessageBox.confirm(`确定删除分组「${ctx.groupName}」？`, '确认删除', { type: 'warning' })
+  if (ctx.type === 'actress') { await invoke('delete_actress_group', { groupId: ctx.groupId }) }
+  else { await invoke('delete_group', { groupId: ctx.groupId }) }
   ElMessage.success('已删除'); await fetchGroups()
 }
 
