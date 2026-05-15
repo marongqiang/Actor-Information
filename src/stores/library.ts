@@ -25,6 +25,10 @@ export const useLibraryStore = defineStore('library', {
         this.movies = result.movies || []
         this.total = result.total || 0
         this.currentPage = page
+      } catch(e: any) {
+        // Force show error in UI
+        this.total = -1
+        console.error('get_movies failed:', e)
       } finally {
         this.loading = false
       }
