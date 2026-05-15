@@ -32,13 +32,13 @@ pub fn create_group(
 ) -> Result<GroupItem, crate::utils::error::CommandError> {
     let gtype = group_type.unwrap_or_else(|| "manual".to_string());
 
-    // Check for duplicate name
+    // Check for duplicate name within the same type (允许跨类型同名)
     db::with_db(|conn| {
         let exists: bool = conn
-            .query_row("SELECT COUNT(*) > 0 FROM groups WHERE name = ?1", [&name], |r| r.get(0))
+            .query_row("SELECT COUNT(*) > 0 FROM groups WHERE name = ?1 AND type = ?2", rusqlite::params![&name, &gtype], |r| r.get(0))
             .unwrap_or(false);
         if exists {
-            return Err(crate::utils::error::CommandError::invalid_input(&format!("分组「{}」已存在", name)));
+            return Err(crate::utils::error::CommandError::invalid_input(&format!("该类型下分组「{}」已存在", name)));
         }
         Ok(())
     })?;

@@ -2,8 +2,8 @@
 
 # 智能网盘影视库 (smart-media-vault) 完整规格说明书
 
-**版本**：1.2.0  
-**最后更新**：2025-01-XX  
+**版本**：1.2.3  
+**最后更新**：2026-05-15  
 **维护者**：开发团队  
 
 ---
@@ -922,22 +922,44 @@ jobs:
 
 ## 19. 版本与模块变更标记
 
-本次版本（1.2.0）相对于 1.1.0 的**所有变更模块**清单如下：
+### v1.2.3（相对于 v1.2.2）
 
-| 模块 | 变更类型 | 说明 | 涉及文件/位置 |
-|------|----------|------|----------------|
-| **数据库** | 新增字段 | `av_actors` 表增加 `local_folder_name`, `is_pending`, `source` | `src-tauri/db/migrations/v3.sql` |
-| **数据库** | 新增配置项 | 7 个新配置项（见 4.4 节） | `src-tauri/db/migrations/v3.sql` 初始化部分 |
-| **后端服务** | 新增 | 演员文件夹管理器 `actress_folder_manager.rs` | `src-tauri/services/actress_folder_manager.rs` |
-| **后端服务** | 修改 | `actress_sync.rs`：增加本地文件夹扫描逻辑 | `src-tauri/services/actress_sync.rs` |
-| **后端命令** | 新增 | `scan_local_actress_folder`, `refresh_actress_avatar`, `confirm_actor`, `update_actor_local_folder`, `rename_actor_and_folder`, `merge_actresses`, `detect_duplicate_actresses`, `get_actress_local_folder`, `sync_actress_with_local_folder` | `src-tauri/commands/actress_merge.rs`（新建）及 `mod.rs` 注册 |
-| **后端命令** | 修改 | 原有的 `update_actress` 支持新字段；`sync_actress_data` 逻辑修改 | `src-tauri/commands/library.rs` 或 `actress.rs` |
-| **前端类型** | 修改 | `ActressItem` 增加 `local_folder_name`, `is_pending`, `source` | `src/types/index.ts` |
-| **前端状态** | 修改 | `actress.ts` store 增加方法 | `src/stores/actress.ts` |
-| **前端视图** | 修改 | `ActressTable.vue` 增加待审核筛选、合并按钮、对话框等 | `src/views/ActressTable.vue` |
-| **前端视图** | 修改 | `Settings.vue` 增加演员文件夹配置 | `src/views/Settings.vue` |
-| **事件** | 新增 | `actress-folder-scanned`, `actresses-merged`, `merge-progress` | 后端 `app.emit_all`，前端 `listen` |
-| **测试** | 新增 | `actress_folder_manager` 单元测试、合并功能测试 | `src-tauri/tests/` 和 `tests/unit/` |
+| 模块 | 变更类型 | 说明 |
+|------|----------|------|
+| **后端命令** | 修改 | `create_group` 重名检查增加类型范围，允许跨类型同名 |
+| **前端视图** | 修改 | `App.vue` 侧边栏分组子项支持右键重命名/删除；右键菜单分离(入口/分组)，修复新增弹窗catch错误 |
+| **配置** | 修改 | README版本表格拆分为v1.2.2和v1.2.3两条 |
+
+### v1.2.2（相对于 v1.2.0）
+
+| 模块 | 变更类型 | 说明 |
+|------|----------|------|
+| **数据库** | 新增 | v4迁移：av_actors补created_at列，刮削源扩展至13个 |
+| **前端视图** | 重写 | `App.vue` 侧边栏自定义导航：入口右键分组CRUD，分组子项显示+折叠，收藏影片入口 |
+| **前端视图** | 重写 | `ActressTable.vue` 支持列宽拖动/排序/勾选/分页固定，去除ID/首字母/头像/本地文件夹列，增加别名列，来源简化为网络/本地，批量合并/删除 |
+| **前端视图** | 修改 | `Scan.vue` 全屏加载遮罩，表格resizable/stripe/sortable |
+| **前端视图** | 修改 | `Settings.vue` Tab页签布局(刮削源/代理/缓存/界面/常规)，对比度CSS修复 |
+| **前端视图** | 新增 | `Favorites.vue` 收藏影片页面，右键菜单 |
+| **前端视图** | 修改 | `PosterWall.vue` 右键菜单(收藏/分组/隐藏) |
+| **前端视图** | 修改 | `Actress.vue` 右键菜单(分组/查看影片)，分组管理对话框 |
+| **后端服务** | 修改 | `pan115.rs` 扫码API修正(PNG→base64)，Set-Cookie提取 |
+| **后端命令** | 修改 | `get_groups` 支持按类型筛选 |
+| **配置** | 修改 | CSP添加data:和style-src，刮削源默认13个 |
+
+### v1.2.0（相对于 v1.1.0）
+
+| 模块 | 变更类型 | 说明 |
+|------|----------|------|
+| **数据库** | 新增字段 | `av_actors` 表增加 `local_folder_name`, `is_pending`, `source` |
+| **数据库** | 新增配置项 | 7 个新配置项 |
+| **后端服务** | 新增 | 演员文件夹管理器 `actress_folder_manager.rs` |
+| **后端服务** | 修改 | `actress_sync.rs`：增加本地文件夹扫描逻辑 |
+| **后端命令** | 新增 | 9 个演员文件夹相关命令 |
+| **后端命令** | 修改 | `update_actress` 支持新字段；`sync_actress_data` 逻辑修改 |
+| **前端类型** | 修改 | `ActressItem` 增加 `local_folder_name`, `is_pending`, `source` |
+| **前端状态** | 修改 | `actress.ts` store 增加方法 |
+| **前端视图** | 修改 | `ActressTable.vue`, `Settings.vue` |
+| **事件** | 新增 | `actress-folder-scanned`, `actresses-merged`, `merge-progress` |
 
 ---
 
