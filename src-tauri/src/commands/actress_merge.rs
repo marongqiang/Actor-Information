@@ -100,10 +100,14 @@ pub fn get_actresses_paginated(
     include_pending: Option<bool>,
     group_id: Option<i64>,
 ) -> Result<PaginatedActress, crate::utils::error::CommandError> {
-    let include = include_pending.unwrap_or(true);
     db::with_db(|conn| {
         let mut where_parts: Vec<String> = Vec::new();
-        if !include { where_parts.push("a.is_pending = 0".to_string()); }
+        // include_pending: None=全部, Some(true)=仅待审核, Some(false)=仅已确认
+        match include_pending {
+            Some(true) => where_parts.push("a.is_pending = 1".to_string()),
+            Some(false) => where_parts.push("a.is_pending = 0".to_string()),
+            None => {} // show all
+        }
         if let Some(gid) = group_id {
             where_parts.push(format!("a.id IN (SELECT actress_id FROM actress_group_members WHERE group_id = {})", gid));
         }

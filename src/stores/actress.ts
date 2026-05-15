@@ -21,7 +21,7 @@ export const useActressStore = defineStore('actress', {
         this.loading = false
       }
     },
-    async fetchPaginated(page = 1, pageSize = 20, search?: string, sortField?: string, sortOrder?: string, includePending = true, groupId?: number) {
+    async fetchPaginated(page = 1, pageSize = 20, search?: string, sortField?: string, sortOrder?: string, includePending?: boolean, groupId?: number) {
       this.loading = true
       try {
         const result: any = await invoke('get_actresses_paginated', {

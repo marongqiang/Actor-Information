@@ -3,7 +3,11 @@
     <div class="toolbar">
       <h2>演员表格</h2>
       <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" @change="doSearch" />
-      <el-switch v-model="showPendingOnly" active-text="仅待审核" inactive-text="全部" size="small" @change="doSearch" />
+      <el-button-group size="small">
+        <el-button :type="showPendingOnly === undefined ? 'primary' : ''" @click="showPendingOnly = undefined; doSearch()">全部</el-button>
+        <el-button :type="showPendingOnly === true ? 'warning' : ''" @click="showPendingOnly = true; doSearch()">待审核</el-button>
+        <el-button :type="showPendingOnly === false ? 'success' : ''" @click="showPendingOnly = false; doSearch()">已确认</el-button>
+      </el-button-group>
       <el-button type="success" size="small" @click="scanFolder" :loading="scanning">扫描本地</el-button>
       <el-button size="small" @click="detectDup">检测重复</el-button>
       <el-button size="small" type="danger" @click="deleteAll">全部删除</el-button>
@@ -14,12 +18,22 @@
       </span>
     </div>
 
+    <!-- 筛选条件展示 -->
+    <div class="filter-bar" v-if="search || showPendingOnly !== undefined || filterGroupId">
+      <span class="filter-label">筛选:</span>
+      <el-tag v-if="search" closable size="small" @close="search = ''; doSearch()">搜索: {{ search }}</el-tag>
+      <el-tag v-if="showPendingOnly === true" closable size="small" type="warning" @close="showPendingOnly = undefined; doSearch()">待审核</el-tag>
+      <el-tag v-if="showPendingOnly === false" closable size="small" type="success" @close="showPendingOnly = undefined; doSearch()">已确认</el-tag>
+      <el-tag v-if="filterGroupId" closable size="small" @close="clearGroupFilter()">分组筛选</el-tag>
+    </div>
+
     <div class="table-wrapper">
       <el-table
         ref="tableRef"
         :data="store.actresses"
         v-loading="store.loading"
         style="min-width: 1200px"
+        max-height="calc(100vh - 180px)"
         border stripe resizable
         :default-sort="{ prop: 'name', order: 'ascending' }"
         @selection-change="onSelectionChange"
@@ -156,7 +170,7 @@ import type { ActressItem, MergeOptions, MergeResult } from '@/types'
 
 const route = useRoute()
 const store = useActressStore()
-const search = ref(''); const showPendingOnly = ref(false); const page = ref(1)
+const search = ref(''); const showPendingOnly = ref<boolean | undefined>(undefined); const page = ref(1)
 const scanning = ref(false); const selectedRows = ref<ActressItem[]>([])
 
 const filterGroupId = ref<number | undefined>()
@@ -181,13 +195,17 @@ const dupDialog = ref(false)
 function doSearch() { page.value = 1; fetchData(1) }
 function onPageChange(p: number) { page.value = p; fetchData(p) }
 function fetchData(p: number) {
-  store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, !showPendingOnly.value, filterGroupId.value).then(fetchAliases)
+  store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
 }
 function onSelectionChange(rows: ActressItem[]) { selectedRows.value = rows }
 function onSortChange(sort: any) {
   if (sort.prop) {
-    store.fetchPaginated(page.value, 20, search.value || undefined, sort.prop, sort.order, !showPendingOnly.value, filterGroupId.value).then(fetchAliases)
+    store.fetchPaginated(page.value, 20, search.value || undefined, sort.prop, sort.order, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
   }
+}
+function clearGroupFilter() {
+  filterGroupId.value = undefined
+  doSearch()
 }
 
 async function fetchAliases() {

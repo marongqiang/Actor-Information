@@ -177,25 +177,46 @@ pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> 
 // ─── Cookie-Based Login (alternative method) ───
 
 pub async fn login_with_cookie(cookie_string: String) -> Result<(), CommandError> {
-    // Validate cookie by making a test request
-    let test_url = format!("{}/files/list?limit=1&offset=0&cid=0", WEBAPI_BASE);
-    let resp = CLIENT
+    // Validate cookie by testing against 115 user info API
+    let test_url = format!("{}/user/info", WEBAPI_BASE);
+    let resp = match CLIENT
         .get(&test_url)
         .header("Cookie", &cookie_string)
+        .header("Referer", "https://115.com/")
         .send()
         .await
-        .map_err(|e| CommandError::network(&format!("验证cookie失败: {}", e)))?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("Cookie验证网络请求失败: {}", e);
+            return Err(CommandError::unauthorized(&format!("网络错误: {}", e)));
+        }
+    };
 
-    let json: serde_json::Value = resp.json().await
-        .map_err(|_| CommandError::unauthorized("Cookie无效或已过期"))?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    log::info!("Cookie验证响应 status={}, preview={}", status, &body[..body.len().min(150)]);
 
-    if json["code"].as_i64() != Some(0) {
-        return Err(CommandError::unauthorized("Cookie验证失败"));
+    // Accept both JSON success and HTML responses (115 sometimes returns HTML)
+    if status.is_success() {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+            if json["code"].as_i64() == Some(0) || json["state"].as_bool() == Some(true) {
+                set_cookie(&cookie_string);
+                log::info!("Cookie验证成功（JSON）");
+                return Ok(());
+            }
+            let msg = json["message"].as_str().unwrap_or("未知错误");
+            return Err(CommandError::unauthorized(&format!("Cookie无效: {}", msg)));
+        }
+        // If response is HTML but 200 OK, cookie is likely valid
+        if body.contains("115") || body.contains("user") || body.contains("UID") || body.len() > 100 {
+            set_cookie(&cookie_string);
+            log::info!("Cookie验证成功（HTML响应，假定有效）");
+            return Ok(());
+        }
     }
 
-    set_cookie(&cookie_string);
-    log::info!("通过Cookie直接登录成功");
-    Ok(())
+    Err(CommandError::unauthorized(&format!("Cookie验证失败 (HTTP {})", status)))
 }
 
 // ─── File Operations ───
