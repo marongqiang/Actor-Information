@@ -27,9 +27,6 @@
       <el-tag v-if="filterGroup" type="warning" size="small" closable @close="filterGroup=undefined;doSearch()">
         分组: {{ store.groups.find(g=>g.id===filterGroup)?.name || filterGroup }}
       </el-tag>
-      <el-button size="small" type="danger" @click="testIpc">测试IPC</el-button>
-      <span style="font-size:11px;color:#f56c6c;margin-left:8px;">{{ debugLog }}</span>
-      <span v-if="store._error" style="font-size:11px;color:#ff4444;margin-left:8px;">错误: {{ store._error }}</span>
     </div>
 
     <div v-if="store.loading" class="loading"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
@@ -118,17 +115,11 @@ const filterGroup = ref<number | undefined>(undefined)
 const showHidden = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(20)
-const debugLog = ref('')
 
 watch(() => route.query.group_id, (val) => {
   filterGroup.value = val ? Number(val) : undefined
   doSearch()
 }, { immediate: true })
-
-// 监控 store.total 变化
-watch(() => store.total, (newVal) => {
-  debugLog.value = `total=${newVal}` + (filterGroup.value ? ` fg=${filterGroup.value}` : '') + (store._error ? ` err: ${store._error}` : '')
-})
 
 // Context menu
 const ctx = reactive({ visible: false, x: 0, y: 0, movie: null as MovieItem | null })
@@ -147,7 +138,6 @@ function assetUrl(path: string) {
 }
 
 function doSearch() {
-  debugLog.value = `doSearch: fg=${filterGroup.value} total=${store.total}`
   currentPage.value = 1
   store.setFilters({
     keyword: searchKeyword.value || undefined,
@@ -160,18 +150,6 @@ function doSearch() {
 
 function onPageChange(p: number) { currentPage.value = p; store.fetchMovies(p, pageSize.value) }
 function onPageSizeChange() { currentPage.value = 1; store.fetchMovies(1, pageSize.value) }
-async function testIpc() {
-  debugLog.value = 'testIpc: 开始...'
-  try {
-    const r: any = await invoke('test_movies')
-    debugLog.value = 'testIpc: OK, total=' + r.total
-    store.movies = r.movies; store.total = r.total
-    ElMessage.success('IPC OK: ' + r.total + ' 部')
-  } catch(e: any) {
-    debugLog.value = 'testIpc: FAIL - ' + (e?.message || e)
-    ElMessage.error('IPC FAIL: ' + (e?.message || e))
-  }
-}
 
 // Context menu handlers
 function onContextMenu(e: MouseEvent, movie: MovieItem) {

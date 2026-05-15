@@ -61,33 +61,7 @@ pub fn get_movies(
             progress: Some(r.progress), duration: Some(r.duration),
         }).collect();
 
-        let response = MoviesResponse { movies, total };
-    // Debug: serialize to test
-    match serde_json::to_string(&response) {
-        Ok(json) => log::info!("get_movies 序列化成功, json长度={}bytes", json.len()),
-        Err(e) => log::error!("get_movies 序列化失败: {}", e),
-    }
-    Ok(response)
-    })
-}
-
-// 测试命令：返回2部硬编码影片，验证IPC是否正常
-#[tauri::command]
-pub fn test_movies() -> Result<MoviesResponse, CommandError> {
-    Ok(MoviesResponse {
-        movies: vec![
-            MovieItem {
-                file_id: "test1".into(), title: "测试影片1".into(), year: Some(2024),
-                poster_local: None, rating: Some(8.5), genre: vec!["动作".into()],
-                is_hidden: false, progress: None, duration: None,
-            },
-            MovieItem {
-                file_id: "test2".into(), title: "测试影片2".into(), year: Some(2023),
-                poster_local: None, rating: Some(7.0), genre: vec!["喜剧".into()],
-                is_hidden: false, progress: None, duration: None,
-            },
-        ],
-        total: 2,
+        Ok(MoviesResponse { movies, total })
     })
 }
 

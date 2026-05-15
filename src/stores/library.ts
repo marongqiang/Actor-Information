@@ -11,12 +11,10 @@ export const useLibraryStore = defineStore('library', {
     currentPage: 1,
     filters: {} as FilterParams,
     sort: 'updated_at_desc',
-    _error: '',
   }),
   actions: {
     async fetchMovies(page = 1, pageSize = 20) {
       this.loading = true
-      console.log('store.fetchMovies called, filters=', JSON.stringify(this.filters))
       try {
         const result: any = await invoke('get_movies', {
           filters: this.filters,
@@ -27,9 +25,6 @@ export const useLibraryStore = defineStore('library', {
         this.movies = result.movies || []
         this.total = result.total || 0
         this.currentPage = page
-      } catch(e: any) {
-        this.total = -2
-        this._error = String(e?.message || e).substring(0, 100)
       } finally {
         this.loading = false
       }
