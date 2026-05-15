@@ -255,56 +255,41 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
     let offset = (page - 1) * page_size;
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
-    // cid=0 is special: try multiple formats for root directory
-    if cid == "0" {
-        let root_urls = vec![
-            format!("{}/category/files?cid=0&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
-            format!("{}/category?cid=0&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
-            format!("{}/files?aid=1&cid=0&offset={}&limit={}&show_dir=1&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
-            format!("{}/files/list?aid=1&cid=0&offset={}&limit={}&show_dir=1&format=json&_={}", WEBAPI_BASE, offset, page_size, ts),
-        ];
-        for url in &root_urls {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            let resp = match CLIENT.get(url).header("Cookie", &cookie).send().await {
-                Ok(r) => r, Err(_) => continue,
-            };
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            log::info!("root url={} status={}", url.split('?').next().unwrap_or(""), status);
-            if status.is_success() {
-                if let Ok(result) = parse_files_response(&body, cid) {
-                    if result.0.len() > 0 { return Ok(result); }
-                }
-            }
-        }
-        // Return empty if all fail - user can still manually enter a CID
-        log::warn!("所有根目录端点均失败，返回空列表");
-        return Ok((vec![], 0));
-    }
-
-    // For subdirectories: category/files works reliably
-    for retry in 0..3 {
-        let url = format!("{}/category/files?cid={}&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts);
-        let resp = match CLIENT.get(&url).header("Cookie", &cookie).send().await {
-            Ok(r) => r, Err(_) => { tokio::time::sleep(std::time::Duration::from_secs(1)).await; continue; }
+    // Try up to 5 times with increasing backoff (115 intermittent 405)
+    for retry in 0..5 {
+        // Try endpoint formats - category/files works best for subdirs
+        let url = if cid == "0" && retry > 2 {
+            // For root, try alternative endpoints on later retries
+            format!("{}/category?cid=0&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, offset, page_size, ts)
+        } else {
+            format!("{}/category/files?cid={}&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts)
         };
-        let status = resp.status();
-        if status.as_u16() == 405 && retry < 2 {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            continue;
+
+        if retry > 0 {
+            let delay = std::time::Duration::from_secs(1 << retry.min(3)); // 2s, 4s, 8s, 8s
+            log::info!("cid={} 第{}次重试, 等待{}ms...", cid, retry + 1, delay.as_millis());
+            tokio::time::sleep(delay).await;
         }
+
+        let resp = match CLIENT.get(&url).header("Cookie", &cookie).send().await {
+            Ok(r) => r,
+            Err(e) => { log::warn!("cid={} 请求失败: {}", cid, e); continue; }
+        };
+
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        log::info!("cid={} status={} retry={}", cid, status, retry);
+
         if status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
             match parse_files_response(&body, cid) {
                 Ok(result) => return Ok(result),
                 Err(e) if e.code == 2100 => return Err(e),
-                Err(e) => log::warn!("category 解析失败: {}", e),
+                Err(_) => { /* retry on parse error */ }
             }
         }
-        break;
     }
 
-    Err(CommandError::network("category/files接口不可用(405)，请稍后重试或检查Cookie"))
+    Err(CommandError::network(&format!("cid={} 加载失败(405重试5次无效)，可能Cookie已过期，请重新登录", cid)))
 }
 
 fn parse_files_response(body: &str, cid: &str) -> Result<(Vec<FileInfo>, i64), CommandError> {

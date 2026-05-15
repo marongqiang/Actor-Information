@@ -19,11 +19,10 @@
         </template>
       </div>
 
-      <!-- 手动输入CID（根目录加载失败时备用） -->
-      <div v-if="!currentList.length && !loadingDirs && store.roots.length === 0" style="margin-top: 10px; display: flex; gap: 8px;">
-        <el-input v-model="manualCid" placeholder="手动输入目录CID..." size="small" style="flex: 1;" />
-        <el-button size="small" @click="loadDir(manualCid)">进入</el-button>
-        <span style="font-size: 11px; color: #666; align-self: center;">根目录加载失败时可手动输入CID</span>
+      <!-- 手动输入CID（快捷跳转） -->
+      <div style="margin-top: 8px; display: flex; gap: 8px;">
+        <el-input v-model="manualCid" placeholder="粘贴CID直接跳转目录..." size="small" style="flex: 1;" />
+        <el-button size="small" @click="loadDir(manualCid); manualCid=''">跳转</el-button>
       </div>
 
       <!-- 目录/文件列表 -->
@@ -202,8 +201,9 @@ async function refreshRoots() {
 
 async function loadDir(cid: string) {
   loadingDirs.value = true
-  try { await store.getFiles(cid); currentCid.value = cid } catch (e: any) { ElMessage.error('加载失败: ' + (e.message || e)) }
-  finally { loadingDirs.value = false }
+  try { await store.getFiles(cid); currentCid.value = cid } catch (e: any) {
+    ElMessage({ message: '加载失败: ' + (e.message||e) + '\n请重新登录获取新Cookie后重试\n日志: exe目录\\logs\\app.log', type: 'error', duration: 10000, showClose: true })
+  } finally { loadingDirs.value = false }
 }
 
 async function enterDir(dir: FileItem) {
