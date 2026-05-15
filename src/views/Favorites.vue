@@ -123,7 +123,8 @@ async function fetchData() {
       },
       sort: 'updated_at_desc', page: page.value, pageSize: pageSize.value,
     })
-    movies.value = result.movies || []
+    // favorites_only backend filter + frontend fallback
+    movies.value = (result.movies || []).filter((m: any) => m.is_favorite !== false)
     total.value = result.total || 0
   } finally { loading.value = false }
 }
