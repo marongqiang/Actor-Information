@@ -31,7 +31,7 @@
     </div>
 
     <div class="table-footer">
-      <el-pagination v-if="store.total > pageSize" v-model:current-page="page"
+      <el-pagination v-if="store.total > pageSize" :current-page="page"
         :page-size="pageSize" :total="store.total" layout="prev, pager, next" @current-change="onPageChange" background size="small" />
       <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="onPageSizeChange">
         <el-option :value="20" label="20条/页" />
@@ -110,6 +110,7 @@ onMounted(() => { store.fetchPaginated(1, 20) })
 <style scoped>
 .actress-page { display: flex; flex-direction: column; height: calc(100vh - 60px); }
 .actress-grid-wrapper { flex: 1; overflow-y: auto; }
+.table-footer { flex-shrink: 0; display: flex; justify-content: center; align-items: center; padding: 10px 0; }
 .toolbar {
   display: flex; gap: 12px; align-items: center;
   margin-bottom: 20px; padding: 12px; background: #1a1a2e; border-radius: 8px;

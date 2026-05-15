@@ -59,7 +59,7 @@
     </div>
 
     <div class="table-footer">
-      <el-pagination v-if="store.total > pageSize" v-model:current-page="currentPage"
+      <el-pagination v-if="store.total > pageSize" :current-page="currentPage"
         :page-size="pageSize" :total="store.total" layout="prev, pager, next" @current-change="onPageChange" background size="small" />
       <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="onPageSizeChange">
         <el-option :value="20" label="20条/页" />

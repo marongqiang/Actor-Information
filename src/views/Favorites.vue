@@ -33,7 +33,7 @@
     </div>
 
     <div class="table-footer">
-      <el-pagination v-if="total > pageSize" v-model:current-page="page"
+      <el-pagination v-if="total > pageSize" :current-page="page"
         :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="onPageChange" background size="small" />
       <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="doSearch">
         <el-option :value="20" label="20条/页" />
@@ -114,8 +114,8 @@ async function fetchData() {
       filters: { group_id: filterGroupId.value, is_hidden: false },
       sort: 'updated_at_desc', page: page.value, pageSize: pageSize.value,
     })
-    movies.value = (result.movies || []).filter((m: any) => m.is_favorite)
-    total.value = movies.value.length
+    movies.value = result.movies || []
+    total.value = result.total || 0
   } finally { loading.value = false }
 }
 
