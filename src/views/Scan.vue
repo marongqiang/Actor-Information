@@ -19,6 +19,13 @@
         </template>
       </div>
 
+      <!-- 手动输入CID（根目录加载失败时备用） -->
+      <div v-if="!currentList.length && !loadingDirs && store.roots.length === 0" style="margin-top: 10px; display: flex; gap: 8px;">
+        <el-input v-model="manualCid" placeholder="手动输入目录CID..." size="small" style="flex: 1;" />
+        <el-button size="small" @click="loadDir(manualCid)">进入</el-button>
+        <span style="font-size: 11px; color: #666; align-self: center;">根目录加载失败时可手动输入CID</span>
+      </div>
+
       <!-- 目录/文件列表 -->
       <el-table :data="currentList" style="width: 100%; margin-top: 8px;" border resizable stripe size="small"
         v-loading="loadingDirs" @selection-change="onDirSelect">
@@ -156,6 +163,7 @@ const taskStore = useTaskStore()
 // Navigation
 const breadcrumbs = ref<{ cid: string; name: string }[]>([])
 const currentCid = ref('0')
+const manualCid = ref('')
 const loadingRoots = ref(false)
 const loadingDirs = ref(false)
 const scanLoading = ref(false)
@@ -194,13 +202,12 @@ async function refreshRoots() {
 
 async function loadDir(cid: string) {
   loadingDirs.value = true
-  try { await store.getFiles(cid) } catch (e: any) { ElMessage.error('加载失败: ' + (e.message || e)) }
+  try { await store.getFiles(cid); currentCid.value = cid } catch (e: any) { ElMessage.error('加载失败: ' + (e.message || e)) }
   finally { loadingDirs.value = false }
 }
 
 async function enterDir(dir: FileItem) {
   breadcrumbs.value.push({ cid: dir.cid, name: dir.name })
-  currentCid.value = dir.cid
   await loadDir(dir.cid)
 }
 
