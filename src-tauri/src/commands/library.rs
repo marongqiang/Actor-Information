@@ -65,6 +65,26 @@ pub fn get_movies(
     })
 }
 
+// 测试命令：返回2部硬编码影片，验证IPC是否正常
+#[tauri::command]
+pub fn test_movies() -> Result<MoviesResponse, CommandError> {
+    Ok(MoviesResponse {
+        movies: vec![
+            MovieItem {
+                file_id: "test1".into(), title: "测试影片1".into(), year: Some(2024),
+                poster_local: None, rating: Some(8.5), genre: vec!["动作".into()],
+                is_hidden: false, progress: None, duration: None,
+            },
+            MovieItem {
+                file_id: "test2".into(), title: "测试影片2".into(), year: Some(2023),
+                poster_local: None, rating: Some(7.0), genre: vec!["喜剧".into()],
+                is_hidden: false, progress: None, duration: None,
+            },
+        ],
+        total: 2,
+    })
+}
+
 fn parse_genre(genre_json: &Option<String>) -> Vec<String> {
     genre_json.as_ref()
         .and_then(|g| serde_json::from_str(g).ok())

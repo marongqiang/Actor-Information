@@ -27,6 +27,7 @@
       <el-tag v-if="filterGroup" type="warning" size="small" closable @close="filterGroup=undefined;doSearch()">
         分组: {{ store.groups.find(g=>g.id===filterGroup)?.name || filterGroup }}
       </el-tag>
+      <el-button size="small" type="danger" @click="testIpc">测试IPC</el-button>
     </div>
 
     <div v-if="store.loading" class="loading"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
@@ -150,6 +151,13 @@ function doSearch() {
 
 function onPageChange(p: number) { currentPage.value = p; store.fetchMovies(p, pageSize.value) }
 function onPageSizeChange() { currentPage.value = 1; store.fetchMovies(1, pageSize.value) }
+async function testIpc() {
+  try {
+    const r: any = await invoke('test_movies')
+    store.movies = r.movies; store.total = r.total
+    ElMessage.success('IPC OK: ' + r.total + ' 部')
+  } catch(e: any) { ElMessage.error('IPC FAIL: ' + (e?.message || e)) }
+}
 
 // Context menu handlers
 function onContextMenu(e: MouseEvent, movie: MovieItem) {
