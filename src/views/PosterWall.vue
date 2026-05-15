@@ -126,7 +126,7 @@ watch(() => route.query.group_id, (val) => {
 
 // 监控 store.total 变化
 watch(() => store.total, (newVal) => {
-  debugLog.value = `total=${newVal}` + (filterGroup.value ? ` fg=${filterGroup.value}` : '')
+  debugLog.value = `total=${newVal}` + (filterGroup.value ? ` fg=${filterGroup.value}` : '') + (store._error ? ` err: ${store._error}` : '')
 })
 
 // Context menu

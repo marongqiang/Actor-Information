@@ -11,6 +11,7 @@ export const useLibraryStore = defineStore('library', {
     currentPage: 1,
     filters: {} as FilterParams,
     sort: 'updated_at_desc',
+    _error: '',
   }),
   actions: {
     async fetchMovies(page = 1, pageSize = 20) {
@@ -28,12 +29,7 @@ export const useLibraryStore = defineStore('library', {
         this.currentPage = page
       } catch(e: any) {
         this.total = -2
-        const msg = String(e?.message || e)
-        console.error('get_movies failed:', msg, JSON.stringify(e))
-        // Try to decode error detail
-        if (msg.includes('failed to deserialize') || msg.includes('serialize')) {
-          console.error('Tauri序列化错误:', msg.substring(0, 200))
-        }
+        this._error = String(e?.message || e).substring(0, 100)
       } finally {
         this.loading = false
       }
