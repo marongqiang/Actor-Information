@@ -28,6 +28,7 @@
         分组: {{ store.groups.find(g=>g.id===filterGroup)?.name || filterGroup }}
       </el-tag>
       <el-button size="small" type="danger" @click="testIpc">测试IPC</el-button>
+      <span style="font-size:11px;color:#f56c6c;margin-left:8px;">{{ debugLog }}</span>
     </div>
 
     <div v-if="store.loading" class="loading"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
@@ -116,9 +117,10 @@ const filterGroup = ref<number | undefined>(undefined)
 const showHidden = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(20)
+const debugLog = ref('')
 
 watch(() => route.query.group_id, (val) => {
-  console.log('PosterWall watch fired, group_id=', val)
+  debugLog.value = `watch: group_id=${val}`
   filterGroup.value = val ? Number(val) : undefined
   doSearch()
 }, { immediate: true })
@@ -140,7 +142,7 @@ function assetUrl(path: string) {
 }
 
 function doSearch() {
-  console.log('PosterWall doSearch, filterGroup=', filterGroup.value)
+  debugLog.value = `doSearch: filterGroup=${filterGroup.value}`
   currentPage.value = 1
   store.setFilters({
     keyword: searchKeyword.value || undefined,
@@ -154,11 +156,16 @@ function doSearch() {
 function onPageChange(p: number) { currentPage.value = p; store.fetchMovies(p, pageSize.value) }
 function onPageSizeChange() { currentPage.value = 1; store.fetchMovies(1, pageSize.value) }
 async function testIpc() {
+  debugLog.value = 'testIpc: 开始...'
   try {
     const r: any = await invoke('test_movies')
+    debugLog.value = 'testIpc: OK, total=' + r.total
     store.movies = r.movies; store.total = r.total
     ElMessage.success('IPC OK: ' + r.total + ' 部')
-  } catch(e: any) { ElMessage.error('IPC FAIL: ' + (e?.message || e)) }
+  } catch(e: any) {
+    debugLog.value = 'testIpc: FAIL - ' + (e?.message || e)
+    ElMessage.error('IPC FAIL: ' + (e?.message || e))
+  }
 }
 
 // Context menu handlers
