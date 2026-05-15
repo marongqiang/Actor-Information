@@ -17,6 +17,8 @@ export interface MovieItem {
   is_hidden: boolean;
   progress?: number;
   duration?: number;
+  group_names?: string[];
+  is_favorite?: boolean;
 }
 
 export interface MovieDetail extends MovieItem {

@@ -24,6 +24,8 @@ pub struct MovieItem {
     pub is_hidden: bool,
     pub progress: Option<i64>,
     pub duration: Option<i64>,
+    pub group_names: Vec<String>,     // 所属分组名称列表
+    pub is_favorite: bool,            // 是否收藏（在favorite类型分组中）
 }
 
 #[derive(Serialize)]
@@ -54,20 +56,42 @@ pub fn get_movies(
             ps,
         )?;
 
-        let movies = rows.into_iter().map(|r| MovieItem {
-            file_id: r.file_id,
-            title: r.title,
-            year: r.year,
-            poster_local: r.poster_local,
-            rating: r.rating,
-            genre: parse_genre(&r.genre),
-            is_hidden: r.is_hidden,
-            progress: Some(r.progress),
-            duration: Some(r.duration),
+        let movies = rows.into_iter().map(|r| {
+            let group_info = get_movie_group_info(conn, &r.file_id);
+            MovieItem {
+                file_id: r.file_id,
+                title: r.title,
+                year: r.year,
+                poster_local: r.poster_local,
+                rating: r.rating,
+                genre: parse_genre(&r.genre),
+                is_hidden: r.is_hidden,
+                progress: Some(r.progress),
+                duration: Some(r.duration),
+                group_names: group_info.0,
+                is_favorite: group_info.1,
+            }
         }).collect();
 
         Ok(MoviesResponse { movies, total })
     })
+}
+
+fn get_movie_group_info(conn: &rusqlite::Connection, file_id: &str) -> (Vec<String>, bool) {
+    let mut stmt = conn.prepare(
+        "SELECT g.name, g.type FROM groups g JOIN movie_groups mg ON g.id = mg.group_id WHERE mg.movie_id = ?1"
+    ).ok();
+    let mut names = Vec::new();
+    let mut is_fav = false;
+    if let Some(stmt) = stmt.as_mut() {
+        if let Ok(rows) = stmt.query_map([file_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) {
+            for r in rows.flatten() {
+                names.push(r.0);
+                if r.1 == "favorite" { is_fav = true; }
+            }
+        }
+    }
+    (names, is_fav)
 }
 
 fn parse_genre(genre_json: &Option<String>) -> Vec<String> {

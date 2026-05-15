@@ -44,6 +44,14 @@
         <el-table-column label="修改时间" width="160" sortable="custom">
           <template #default="{ row }">{{ row.updated_at ? new Date(row.updated_at * 1000).toLocaleString() : '-' }}</template>
         </el-table-column>
+        <el-table-column prop="is_favorite" label="收藏" width="70" sortable="custom">
+          <template #default="{ row }">
+            <el-tag :type="row.is_favorite ? 'warning' : 'info'" size="small">{{ row.is_favorite ? '是' : '否' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="group_names" label="所属分组" width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ (row.group_names || []).join(', ') || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="is_hidden" label="隐藏" width="70" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="row.is_hidden ? 'danger' : 'success'" size="small">{{ row.is_hidden ? '是' : '否' }}</el-tag>
