@@ -255,55 +255,36 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
     let offset = (page - 1) * page_size;
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
-    // Try multiple URL formats (115 API is inconsistent across accounts)
-    let url_formats: Vec<(&str, String)> = vec![
-        ("category", format!("{}/category/files?cid={}&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts)),
-        ("files", format!("{}/files?aid=1&cid={}&offset={}&limit={}&show_dir=1&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts)),
-        ("files/list", format!("{}/files/list?aid=1&cid={}&o=user_ptime&asc=0&offset={}&show_dir=1&limit={}&snap=0&natsort=1&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts)),
-        ("proapi", format!("{}/files/list?aid=1&cid={}&offset={}&limit={}&show_dir=1&format=json&_={}", PROAPI_BASE, cid, offset, page_size, ts)),
-    ];
-
-    for (label, url) in &url_formats {
-        let resp = match CLIENT
-            .get(url)
-            .header("Cookie", &cookie)
-            
-            .header("Accept", "application/json")
-            .send()
-            .await
-        {
+    // category/files is the only endpoint that works with the Cookie
+    // files and files/list return "服务器开小差了" (Cookie rejected)
+    // Retry category up to 2 times on 405 (transient error)
+    for retry in 0..3 {
+        let url = format!("{}/category/files?cid={}&offset={}&limit={}&format=json&_={}", WEBAPI_BASE, cid, offset, page_size, ts);
+        let resp = match CLIENT.get(&url).header("Cookie", &cookie).send().await {
             Ok(r) => r,
-            Err(e) => { log::warn!("{} 连接失败: {}", label, e); continue; }
+            Err(e) => { log::warn!("category 连接失败(尝试{}): {}", retry + 1, e); continue; }
         };
-
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        log::info!("{} cid={} status={}", label, cid, status);
-        log::info!("{} body: {}", label, &body[..body.len().min(500)]);
 
-        if !status.is_success() { continue; }
-
-        match parse_files_response(&body, cid) {
-            Ok(result) if result.0.len() > 0 => {
-                log::info!("{} 成功: {} 个项目", label, result.0.len());
-                return Ok(result);
-            }
-            Ok(result) => {
-                log::info!("{} 成功但为空(可能cid={}下无文件)", label, cid);
-                // Don't error on empty - root dir might just have no files
-                return Ok(result);
-            }
-            Err(e) if e.code == 2100 => {
-                log::warn!("{} 认证失败: {}", label, e);
-                // Try next format
-            }
-            Err(e) => {
-                log::warn!("{} 解析失败: {}", label, e);
+        if status.as_u16() == 405 && retry < 2 {
+            log::warn!("category cid={} 返回405, 1秒后重试...", cid);
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            continue;
+        }
+        if status.is_success() {
+            log::info!("category cid={} status={}, {}字节", cid, status, body.len());
+            log::debug!("category body: {}", &body[..body.len().min(300)]);
+            match parse_files_response(&body, cid) {
+                Ok(result) => return Ok(result),
+                Err(e) if e.code == 2100 => return Err(e),
+                Err(e) => log::warn!("category 解析失败: {}", e),
             }
         }
+        break;
     }
 
-    Err(CommandError::unauthorized("115接口全部拒绝访问，Cookie可能缺少API权限字段。请确保Cookie包含完整字段（特别是UID/CID/SEID）"))
+    Err(CommandError::network("category/files接口不可用(405)，请稍后重试或检查Cookie"))
 }
 
 fn parse_files_response(body: &str, cid: &str) -> Result<(Vec<FileInfo>, i64), CommandError> {
