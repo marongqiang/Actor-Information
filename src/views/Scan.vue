@@ -181,7 +181,7 @@ async function refreshRoots() {
     breadcrumbs.value = []
     await loadDir('0')
   } catch (e: any) {
-    ElMessage.error('加载根目录失败: ' + (e.message || e))
+    ElMessage({ message: '加载失败: ' + (e.message || e) + '\n查看日志: %APPDATA%\\smart-media-vault\\logs\\app.log', type: 'error', duration: 10000, showClose: true })
   } finally { loadingRoots.value = false }
 }
 
@@ -240,7 +240,7 @@ async function runScan() {
     lastResult.value = { total: totalAll, new: totalNew, updated: totalUpdated, deleted: 0 }
   } catch (e: any) {
     scanDialogVisible.value = false
-    ElMessage.error('扫描失败: ' + (e.message || e))
+    ElMessage({ message: '扫描失败: ' + (e.message || e) + '\n日志: %APPDATA%\\smart-media-vault\\logs\\app.log', type: 'error', duration: 8000, showClose: true })
   } finally {
     scanLoading.value = false
   }

@@ -69,10 +69,13 @@
         <el-divider />
         <div class="danger-zone">
           <h4>数据管理</h4>
-          <div style="display: flex; gap: 12px;">
+          <div style="display: flex; gap: 12px; margin-bottom: 8px;">
             <el-button @click="exportList">导出影片列表</el-button>
             <el-button type="danger" @click="clearCache">清除图片缓存</el-button>
           </div>
+          <p style="font-size: 11px; color: #666; margin-top: 8px;">
+            📋 日志文件: %APPDATA%\smart-media-vault\logs\app.log
+          </p>
         </div>
       </el-tab-pane>
 
@@ -289,7 +292,8 @@ async function loginByCookie() {
     loggedIn.value = true
     ElMessage.success('Cookie登录成功')
   } catch (e: any) {
-    ElMessage.error('Cookie验证失败: ' + (e.message || e))
+    const msg = (e?.message || e || '') + '\n日志路径: %APPDATA%\\smart-media-vault\\logs\\app.log'
+    ElMessage({ message: 'Cookie验证失败: ' + msg, type: 'error', duration: 10000, showClose: true })
   } finally { cookieLoading.value = false }
 }
 
