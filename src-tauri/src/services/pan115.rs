@@ -19,8 +19,8 @@ static EMPTY_ARR: once_cell::sync::Lazy<Vec<serde_json::Value>> = once_cell::syn
 // 115 API endpoints
 const QRCODE_API: &str = "https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode";
 const QRCODE_STATUS_API: &str = "https://qrcodeapi.115.com/api/1.0/web/1.0/qrcode/status";
-const WEBAPI_BASE: &str = "https://webapi.115.com";
 const PROAPI_BASE: &str = "https://proapi.115.com";
+const WEBAPI_BASE: &str = "https://webapi.115.com";
 
 pub fn set_cookie(cookie: &str) {
     let mut c = COOKIE.lock().unwrap();
@@ -249,45 +249,49 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
     let offset = (page - 1) * page_size;
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
-    // 115 files API - try /files/list first (more compatible)
-    let url = format!(
-        "{}/files/list?aid=1&cid={}&o=user_ptime&asc=0&offset={}&show_dir=1&limit={}&snap=0&natsort=1&format=json&_={}",
-        WEBAPI_BASE, cid, offset, page_size, ts
-    );
-
-    let resp = CLIENT
-        .get(&url)
-        .header("Cookie", &cookie)
-        .header("Referer", "https://115.com/")
-        .header("Accept", "application/json")
-        .send()
-        .await?;
-
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_default();
-    log::info!("get_files cid={} status={}", cid, status);
-    log::debug!("get_files body: {}", &body[..body.len().min(300)]);
-
-    // If 405, try alternate endpoint
-    if status.as_u16() == 405 {
-        let url2 = format!(
-            "{}/files?aid=1&cid={}&offset={}&limit={}&show_dir=1&format=json&_={}",
-            WEBAPI_BASE, cid, offset, page_size, ts
+    // Try proapi first (newer 115 API), then fallback to webapi
+    for (base_url, label) in &[(PROAPI_BASE, "proapi"), (WEBAPI_BASE, "webapi")] {
+        let url = format!(
+            "{}/files/list?aid=1&cid={}&o=user_ptime&asc=0&offset={}&show_dir=1&limit={}&snap=0&natsort=1&format=json&_={}",
+            base_url, cid, offset, page_size, ts
         );
-        let resp2 = CLIENT.get(&url2).header("Cookie", &cookie).header("Referer", "https://115.com/").send().await?;
-        let status2 = resp2.status();
-        let body2 = resp2.text().await.unwrap_or_default();
-        if status2.is_success() {
-            return parse_files_response(&body2, cid);
+
+        let resp = match CLIENT
+            .get(&url)
+            .header("Cookie", &cookie)
+            .header("Referer", "https://115.com/")
+            .header("Accept", "application/json")
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("{} 请求失败: {}", label, e);
+                continue;
+            }
+        };
+
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        log::info!("{} cid={} status={}", label, cid, status);
+        log::debug!("{} body: {}", label, &body[..body.len().min(300)]);
+
+        if status.is_success() {
+            match parse_files_response(&body, cid) {
+                Ok(result) => {
+                    log::info!("{} API成功: {} 个项目", label, result.0.len());
+                    return Ok(result);
+                }
+                Err(e) => {
+                    log::warn!("{} 解析失败: {}", label, e);
+                    // If it's an auth error, don't try other APIs
+                    if e.code == 2100 { return Err(e); }
+                }
+            }
         }
-        return Err(CommandError::network("HTTP 405: 115接口不可用"));
     }
 
-    if !status.is_success() {
-        return Err(CommandError::network(&format!("HTTP {}: {}", status, &body[..body.len().min(100)])));
-    }
-
-    parse_files_response(&body, cid)
+    Err(CommandError::network("所有115接口均不可用，Cookie可能已过期，请重新登录"))
 }
 
 fn parse_files_response(body: &str, cid: &str) -> Result<(Vec<FileInfo>, i64), CommandError> {
@@ -304,10 +308,10 @@ fn parse_files_response(body: &str, cid: &str) -> Result<(Vec<FileInfo>, i64), C
     let err_msg = json["message"].as_str().or_else(|| json["error"].as_str()).unwrap_or("");
 
     if err_code != 0 && !state_ok {
-        if err_code == 99 || err_code == 911 || err_msg.contains("开小差") || err_msg.contains("登录") {
-            return Err(CommandError::unauthorized(&format!("Cookie已过期或无效: {}", err_msg)));
+        if err_msg.contains("开小差") || err_msg.contains("登录") || err_msg.contains("过期") || err_msg.contains("cookie") {
+            return Err(CommandError::unauthorized(&format!("Cookie无效: {}", err_msg)));
         }
-        return Err(CommandError::network(&format!("{} ({})", err_msg, err_code)));
+        return Err(CommandError::network(&format!("{}", err_msg)));
     }
 
     let total = json["data"]["count"].as_i64().or_else(|| json["count"].as_i64()).unwrap_or(0);
