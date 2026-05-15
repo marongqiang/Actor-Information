@@ -2,6 +2,7 @@ use crate::db::{self, now_ts};
 use crate::services::pan115::{self, FileInfo};
 use crate::utils::error::{CommandError, CommandResult};
 use serde::Serialize;
+use std::time::{Duration, Instant};
 
 #[derive(Serialize)]
 pub struct ScanResult {
@@ -14,6 +15,19 @@ pub struct ScanResult {
 const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "rmvb", "flv", "wmv", "ts", "iso", "m2ts",
 ];
+
+// 限流：每秒最多3次请求
+static LAST_REQUEST: once_cell::sync::Lazy<tokio::sync::Mutex<Instant>> = once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(Instant::now()));
+const MIN_INTERVAL: Duration = Duration::from_millis(350);
+
+async fn rate_limit() {
+    let mut last = LAST_REQUEST.lock().await;
+    let elapsed = last.elapsed();
+    if elapsed < MIN_INTERVAL {
+        tokio::time::sleep(MIN_INTERVAL - elapsed).await;
+    }
+    *last = Instant::now();
+}
 
 pub async fn scan_directory(
     cid: &str,
@@ -136,6 +150,7 @@ async fn collect_video_files(
         return Ok(());
     }
 
+    rate_limit().await;
     let (items, reported_total) = match pan115::get_files(cid, 1, 200).await {
         Ok(r) => {
             log::info!("扫描目录 cid={}: {} 个项目, API报告总计={}", cid, r.0.len(), r.1);
@@ -155,6 +170,7 @@ async fn collect_video_files(
         let page_items = if page == 1 {
             items.clone()
         } else {
+            rate_limit().await;
             match pan115::get_files(cid, page, 200).await {
                 Ok((items, _)) => {
                     if items.is_empty() { break; }
