@@ -3,7 +3,7 @@
     <div class="toolbar">
       <h2>演员表格</h2>
       <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" @change="doSearch" />
-      <el-switch v-model="showPending" active-text="待审核" inactive-text="全部" size="small" @change="doSearch" />
+      <el-switch v-model="showPendingOnly" active-text="仅待审核" inactive-text="全部" size="small" @change="doSearch" />
       <el-button type="success" size="small" @click="scanFolder" :loading="scanning">扫描本地</el-button>
       <el-button size="small" @click="detectDup">检测重复</el-button>
       <span v-if="selectedRows.length" class="batch-actions">
@@ -20,63 +20,93 @@
         v-loading="store.loading"
         style="width: 100%"
         border stripe resizable
-        :default-sort="{ prop: 'movie_count', order: 'descending' }"
+        :default-sort="{ prop: 'name', order: 'ascending' }"
         @selection-change="onSelectionChange"
         @sort-change="onSortChange"
+        @cell-dblclick="onCellDblClick"
         show-overflow-tooltip
       >
-        <el-table-column type="selection" width="40" fixed="left" />
-        <el-table-column prop="name" label="姓名" width="140" sortable="custom" fixed="left">
+        <el-table-column type="selection" width="40" />
+        <el-table-column prop="name" label="姓名" width="140" sortable="custom">
           <template #default="{ row }">
-            <span :style="{ color: row.is_pending ? '#e6a23c' : '#e0e0e0' }">{{ row.name }}</span>
-            <el-tag v-if="row.is_pending" type="warning" size="small" style="margin-left: 4px;">审</el-tag>
+            <span class="name-cell">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="aliases" label="别名" min-width="100">
+        <el-table-column prop="aliases" label="别名" min-width="120" sortable="custom">
           <template #default="{ row }">
-            <span v-if="row._aliases?.length">{{ row._aliases.join(', ') }}</span>
-            <span v-else style="color: #555;">-</span>
+            <template v-if="editingCell === `${row.id}_aliases`">
+              <el-input v-model="editValue" size="small" @blur="saveCell(row, 'aliases')" @keyup.enter="saveCell(row, 'aliases')" ref="editInputRef" />
+            </template>
+            <span v-else class="editable-cell">{{ row._aliases?.join(', ') || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="source" label="来源" width="70">
+        <el-table-column prop="source" label="来源" width="70" sortable="custom" />
+        <el-table-column prop="is_pending" label="待审核" width="75" sortable="custom">
           <template #default="{ row }">
-            <el-tag :type="row.source === 'local_folder' ? 'success' : ''" size="small">{{ row.source === 'local_folder' ? '本地' : '网络' }}</el-tag>
+            <template v-if="editingCell === `${row.id}_is_pending`">
+              <el-switch v-model="editBool" size="small" @change="saveCell(row, 'is_pending')" />
+            </template>
+            <span v-else class="editable-cell" :style="{ color: row.is_pending ? '#e6a23c' : '#67c23a' }">
+              {{ row.is_pending ? '是' : '否' }}
+            </span>
           </template>
         </el-table-column>
-        <el-table-column prop="debut_year" label="出道年" width="75" sortable="custom" />
-        <el-table-column prop="height" label="身高" width="65" sortable="custom" />
-        <el-table-column label="三围" width="100">
-          <template #default="{ row }"><span v-if="row.bust">{{ row.bust }}/{{ row.waist }}/{{ row.hip }}</span></template>
-        </el-table-column>
-        <el-table-column prop="cup" label="罩杯" width="60" />
-        <el-table-column prop="movie_count" label="作品" width="60" sortable="custom" />
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column prop="debut_year" label="出道年" width="80" sortable="custom">
           <template #default="{ row }">
-            <el-button size="small" @click="showAliases(row)">别名</el-button>
+            <template v-if="editingCell === `${row.id}_debut_year`">
+              <el-input-number v-model="editNum" size="small" controls-position="right" :min="1970" :max="2030" @blur="saveCell(row, 'debut_year')" />
+            </template>
+            <span v-else class="editable-cell">{{ row.debut_year || '-' }}</span>
           </template>
         </el-table-column>
+        <el-table-column prop="height" label="身高" width="70" sortable="custom">
+          <template #default="{ row }">
+            <template v-if="editingCell === `${row.id}_height`">
+              <el-input-number v-model="editNum" size="small" controls-position="right" :min="100" :max="200" @blur="saveCell(row, 'height')" />
+            </template>
+            <span v-else class="editable-cell">{{ row.height || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="bust" label="胸围" width="65" sortable="custom">
+          <template #default="{ row }">
+            <template v-if="editingCell === `${row.id}_bust`">
+              <el-input-number v-model="editNum" size="small" controls-position="right" :min="50" :max="200" @blur="saveCell(row, 'bust')" />
+            </template>
+            <span v-else class="editable-cell">{{ row.bust || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="waist" label="腰围" width="65" sortable="custom">
+          <template #default="{ row }">
+            <template v-if="editingCell === `${row.id}_waist`">
+              <el-input-number v-model="editNum" size="small" controls-position="right" :min="40" :max="150" @blur="saveCell(row, 'waist')" />
+            </template>
+            <span v-else class="editable-cell">{{ row.waist || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="hip" label="臀围" width="65" sortable="custom">
+          <template #default="{ row }">
+            <template v-if="editingCell === `${row.id}_hip`">
+              <el-input-number v-model="editNum" size="small" controls-position="right" :min="50" :max="200" @blur="saveCell(row, 'hip')" />
+            </template>
+            <span v-else class="editable-cell">{{ row.hip || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="cup" label="罩杯" width="70" sortable="custom">
+          <template #default="{ row }">
+            <template v-if="editingCell === `${row.id}_cup`">
+              <el-input v-model="editValue" size="small" @blur="saveCell(row, 'cup')" @keyup.enter="saveCell(row, 'cup')" />
+            </template>
+            <span v-else class="editable-cell">{{ row.cup || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="movie_count" label="作品数" width="75" sortable="custom" />
       </el-table>
     </div>
 
     <div class="table-footer">
-      <el-pagination
-        v-if="store.total > 20"
-        v-model:current-page="page"
-        :page-size="20" :total="store.total"
-        layout="prev, pager, next" @current-change="onPageChange" background size="small"
-      />
+      <el-pagination v-if="store.total > 20" v-model:current-page="page" :page-size="20" :total="store.total"
+        layout="prev, pager, next" @current-change="onPageChange" background size="small" />
     </div>
-
-    <!-- 别名对话框 -->
-    <el-dialog v-model="aliasDialog" title="演员别名" width="400px">
-      <p><strong>{{ selectedActress?.name }}</strong> 的别名：</p>
-      <el-tag v-for="a in aliases" :key="a" style="margin: 4px" closable @close="removeAlias(a)">{{ a }}</el-tag>
-      <p v-if="!aliases.length" style="color: #888">暂无别名</p>
-      <div style="margin-top: 16px; display: flex; gap: 8px;">
-        <el-input v-model="newAlias" placeholder="新别名" size="small" />
-        <el-button size="small" type="primary" @click="addAlias">添加</el-button>
-      </div>
-    </el-dialog>
 
     <!-- 合并对话框 -->
     <el-dialog v-model="mergeDialog" title="合并演员" width="500px">
@@ -93,7 +123,6 @@
       </el-radio-group>
       <div v-if="mergeResult" style="margin-top: 10px; padding: 8px; background: #252540; border-radius: 4px;">
         <p :style="{ color: mergeResult.success ? '#67c23a' : '#f56c6c' }">{{ mergeResult.success ? '合并成功' : mergeResult.error }}</p>
-        <p v-if="mergeResult.movedFiles?.length">移动文件: {{ mergeResult.movedFiles.length }}</p>
       </div>
       <template #footer>
         <el-button @click="mergeDialog = false">取消</el-button>
@@ -109,58 +138,127 @@
           <template #default="{ row }"><el-progress :percentage="Math.round(row.similarity * 100)" :stroke-width="6" /></template>
         </el-table-column>
       </el-table>
-      <p v-if="!store.duplicates.length" style="color: #888; text-align: center;">未发现重复</p>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useActressStore } from '@/stores/actress'
+import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { ActressItem, MergeOptions, MergeResult } from '@/types'
 
 const store = useActressStore()
-const search = ref(''); const showPending = ref(false); const page = ref(1)
+const search = ref(''); const showPendingOnly = ref(false); const page = ref(1)
 const scanning = ref(false); const selectedRows = ref<ActressItem[]>([])
 
-const aliasDialog = ref(false); const selectedActress = ref<ActressItem | null>(null)
-const aliases = ref<string[]>([]); const newAlias = ref('')
+// Inline editing
+const editingCell = ref('')
+const editValue = ref('')
+const editNum = ref(0)
+const editBool = ref(false)
+const editInputRef = ref()
 
-const mergeDialog = ref(false); const targetActressId = ref<number | null>(null)
+// Merge
+const mergeDialog = ref(false); const selectedActress = ref<ActressItem | null>(null)
+const targetActressId = ref<number | null>(null)
 const mergeOpts = ref<MergeOptions>({ mergeFolders: true, conflictPolicy: 'rename', dryRun: true })
 const mergeResult = ref<MergeResult | null>(null)
 const dupDialog = ref(false)
 
-function doSearch() { page.value = 1; store.fetchPaginated(1, 20, search.value || undefined, undefined, undefined, !showPending.value) }
-function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, !showPending.value) }
+function doSearch() { page.value = 1; fetchData(1) }
+function onPageChange(p: number) { page.value = p; fetchData(p) }
+function fetchData(p: number) {
+  store.fetchPaginated(p, 20, search.value || undefined, undefined, undefined, !showPendingOnly.value).then(fetchAliases)
+}
 function onSelectionChange(rows: ActressItem[]) { selectedRows.value = rows }
-function onSortChange(sort: any) { store.fetchPaginated(page.value, 20, search.value || undefined, sort.prop, sort.order) }
+function onSortChange(sort: any) {
+  if (sort.prop) {
+    store.fetchPaginated(page.value, 20, search.value || undefined, sort.prop, sort.order, !showPendingOnly.value).then(fetchAliases)
+  }
+}
 
 async function fetchAliases() {
   for (const a of store.actresses) { try { (a as any)._aliases = await store.getAliases(a.id) } catch { (a as any)._aliases = [] } }
 }
 
-async function showAliases(row: ActressItem) { selectedActress.value = row; aliases.value = await store.getAliases(row.id); aliasDialog.value = true }
-async function addAlias() { if (!newAlias.value.trim() || !selectedActress.value) return; await store.addAlias(selectedActress.value.id, newAlias.value.trim()); aliases.value = await store.getAliases(selectedActress.value.id); newAlias.value = '' }
-async function removeAlias(_: string) { ElMessage.info('删除别名待实现') }
+// ─── 双击编辑 ───
 
-async function scanFolder() { scanning.value = true; try { const r = await store.scanLocalFolder(); ElMessage.success(`扫描完成: 新增 ${r.added} / 总计 ${r.total}`); doSearch() } catch (e: any) { ElMessage.error('扫描失败: ' + (e.message || e)) } finally { scanning.value = false } }
+function onCellDblClick(row: any, col: any) {
+  if (!col.property || col.property === 'name' || col.property === 'movie_count') return
+  if (col.type === 'selection') return
+  editingCell.value = `${row.id}_${col.property}`
+  if (col.property === 'aliases') {
+    editValue.value = row._aliases?.join(', ') || ''
+  } else if (col.property === 'is_pending') {
+    editBool.value = row.is_pending
+  } else if (col.property === 'cup') {
+    editValue.value = row.cup || ''
+  } else {
+    editNum.value = row[col.property] || 0
+  }
+  nextTick(() => editInputRef.value?.focus?.())
+}
+
+async function saveCell(row: any, field: string) {
+  const cellKey = `${row.id}_${field}`
+  if (editingCell.value !== cellKey) return
+  let newVal: any
+  if (field === 'aliases') {
+    // Parse comma-separated aliases, check duplicates within the same row
+    const parts = editValue.value.split(',').map((s: string) => s.trim()).filter(Boolean)
+    const unique = [...new Set(parts)]
+    if (unique.length !== parts.length) ElMessage.warning('别名中存在重复，已自动去重')
+    newVal = unique.join(', ')
+    row._aliases = unique
+    // Sync aliases to backend: remove old, add all new
+    const oldAliases = await store.getAliases(row.id)
+    for (const a of oldAliases) {
+      // Can't delete individual aliases easily, skip for now
+    }
+    for (const a of unique) {
+      if (!oldAliases.includes(a)) await store.addAlias(row.id, a)
+    }
+  } else if (field === 'is_pending') {
+    newVal = editBool.value
+    row[field] = newVal
+    await store.updateActress(row.id, { is_pending: newVal } as any)
+  } else {
+    newVal = editNum.value
+    row[field] = newVal
+    await store.updateActress(row.id, { [field]: newVal })
+  }
+  editingCell.value = ''
+}
+
+async function scanFolder() {
+  scanning.value = true
+  try { const r = await store.scanLocalFolder(); ElMessage.success(`扫描完成: 新增 ${r.added}`); doSearch() }
+  catch (e: any) { ElMessage.error('扫描失败: ' + (e.message || e)) }
+  finally { scanning.value = false }
+}
+
 async function detectDup() { await store.detectDuplicates(); dupDialog.value = true }
 
-async function batchMerge() { if (selectedRows.value.length < 2) { ElMessage.warning('至少选择2个'); return }; selectedActress.value = selectedRows.value[0]; targetActressId.value = selectedRows.value[1].id; mergeDialog.value = true }
-async function executeMerge() { if (!selectedActress.value || !targetActressId.value) { ElMessage.warning('请选择目标'); return }; mergeResult.value = await store.mergeActressesWithOptions(selectedActress.value.id, targetActressId.value, mergeOpts.value); if (mergeResult.value?.success) { ElMessage.success('合并完成'); doSearch() } }
+function batchMerge() {
+  if (selectedRows.value.length < 2) { ElMessage.warning('至少选择2个'); return }
+  selectedActress.value = selectedRows.value[0]; targetActressId.value = selectedRows.value[1].id; mergeDialog.value = true
+}
+async function executeMerge() {
+  if (!selectedActress.value || !targetActressId.value) return
+  mergeResult.value = await store.mergeActressesWithOptions(selectedActress.value.id, targetActressId.value, mergeOpts.value)
+  if (mergeResult.value?.success) { ElMessage.success('合并完成'); doSearch(); mergeDialog.value = false }
+}
 
 async function batchDelete() {
   if (!selectedRows.value.length) return
   await ElMessageBox.confirm(`确定删除选中的 ${selectedRows.value.length} 位演员？`, '确认删除', { type: 'warning' })
-  const ids = selectedRows.value.map(r => r.id)
-  const count = await store.deleteActresses(ids)
-  ElMessage.success(`已删除 ${count} 位演员`)
-  doSearch()
+  const count = await store.deleteActresses(selectedRows.value.map(r => r.id))
+  ElMessage.success(`已删除 ${count} 位`); doSearch()
 }
 
-onMounted(async () => { await store.fetchPaginated(1, 20); await fetchAliases() })
+onMounted(() => { fetchData(1) })
 </script>
 
 <style scoped>
@@ -169,5 +267,8 @@ onMounted(async () => { await store.fetchPaginated(1, 20); await fetchAliases() 
 .toolbar h2 { font-size: 16px; }
 .batch-actions { color: #409eff; font-size: 12px; margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .table-wrapper { flex: 1; overflow: auto; }
-.table-footer { flex-shrink: 0; display: flex; justify-content: center; padding: 12px 0; }
+.table-footer { flex-shrink: 0; display: flex; justify-content: center; padding: 10px 0; }
+.name-cell { color: #e0e0e0; font-weight: 500; }
+.editable-cell { cursor: pointer; padding: 2px 4px; border-radius: 2px; }
+.editable-cell:hover { background: #252540; }
 </style>

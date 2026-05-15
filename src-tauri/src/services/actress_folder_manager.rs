@@ -79,7 +79,7 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
             db::with_db(|conn| {
                 conn.execute(
                     "INSERT INTO av_actors (name, avatar_local, local_folder_name, is_pending, source, letter, created_at)
-                     VALUES (?1, ?2, ?3, 1, 'local_folder', ?4, ?5)",
+                     VALUES (?1, ?2, ?3, 0, 'local_folder', ?4, ?5)",
                     rusqlite::params![folder_name, avatar.as_deref(), folder_name, letter, now],
                 )?;
                 Ok(())

@@ -14,12 +14,12 @@
               <el-icon class="arrow" :class="{ open: expanded.poster }"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.poster">
+              <div class="nav-sub-item" :class="{ active: currentRoute === '/' }" @click="$router.push('/')">全部</div>
               <div v-for="g in posterGroups" :key="'pg_'+g.id" class="nav-sub-item"
                 @click="$router.push(`/?group_id=${g.id}`)"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'poster', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
-
           <!-- 收藏影片 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/favorites' }"
@@ -29,29 +29,32 @@
               <el-icon class="arrow" :class="{ open: expanded.favorites }"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.favorites">
+              <div class="nav-sub-item" :class="{ active: currentRoute === '/favorites' }" @click="$router.push('/favorites')">全部</div>
               <div v-for="g in favGroups" :key="'fg_'+g.id" class="nav-sub-item"
                 @click="$router.push(`/favorites?group_id=${g.id}`)"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'favorite', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
-
           <!-- 演员库 + 分组 -->
           <div class="nav-section">
-            <div class="nav-item" :class="{ active: currentRoute === '/actress' || currentRoute === '/actress-table' }"
+            <div class="nav-item" :class="{ active: currentRoute === '/actress' }"
               @click="expanded.actress = !expanded.actress"
               @contextmenu.prevent="openGroupMenu($event, 'actress')">
               <el-icon><UserFilled /></el-icon><span>演员库</span>
               <el-icon class="arrow" :class="{ open: expanded.actress }"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.actress">
-              <div class="nav-sub-item" :class="{ active: currentRoute === '/actress' }" @click="$router.push('/actress')">演员墙</div>
-              <div class="nav-sub-item" :class="{ active: currentRoute === '/actress-table' }" @click="$router.push('/actress-table')">演员表格</div>
+              <div class="nav-sub-item" :class="{ active: currentRoute === '/actress' }" @click="$router.push('/actress')">全部</div>
               <div v-for="g in actressGroups" :key="'ag_'+g.id" class="nav-sub-item"
-                @click="$router.push(`/actress-table?group_id=${g.id}`)"
+                @click="$router.push(`/actress?group_id=${g.id}`)"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'actress', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.member_count || 0 }}</span></div>
             </template>
           </div>
-
+          <!-- 演员表格（独立入口） -->
+          <div class="nav-section">
+            <div class="nav-item" :class="{ active: currentRoute === '/actress-table' }" @click="$router.push('/actress-table')">
+              <el-icon><Grid /></el-icon><span>演员表格</span></div>
+          </div>
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/scan' }" @click="$router.push('/scan')">
               <el-icon><FolderOpened /></el-icon><span>扫描管理</span></div>
@@ -97,7 +100,7 @@ import { useRoute } from 'vue-router'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { PictureFilled, UserFilled, FolderOpened, Setting, StarFilled, ArrowRight } from '@element-plus/icons-vue'
+import { PictureFilled, UserFilled, FolderOpened, Setting, StarFilled, ArrowRight, Grid } from '@element-plus/icons-vue'
 import type { Task, GroupItem, ActressGroupItem } from '@/types'
 
 const route = useRoute()

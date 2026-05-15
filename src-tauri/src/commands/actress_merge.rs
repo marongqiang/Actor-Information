@@ -125,12 +125,23 @@ pub fn get_actresses_paginated(
         };
 
         let offset = (page - 1) * page_size;
+
+        // Dynamic sort
+        let valid_fields = ["name", "debut_year", "height", "bust", "waist", "hip", "cup", "movie_count", "id"];
+        let sort_col = sort_field.as_deref().filter(|f| valid_fields.contains(f)).unwrap_or("name");
+        let sort_dir = sort_order.as_deref().unwrap_or("asc");
+        let order_clause = if sort_col == "movie_count" {
+            format!("ORDER BY movie_count {}", sort_dir)
+        } else {
+            format!("ORDER BY a.\"{}\" {}", sort_col.replace('\'', "''"), sort_dir)
+        };
+
         let query_sql = format!(
             "SELECT a.id, a.name, a.avatar_local, a.debut_year, a.height, a.bust, a.waist, a.hip, a.cup, a.letter,
-                    (SELECT COUNT(*) FROM movie_actors ma JOIN actors act ON ma.actor_id = act.id WHERE act.name = a.name),
+                    (SELECT COUNT(*) FROM movie_actors ma JOIN actors act ON ma.actor_id = act.id WHERE act.name = a.name) as movie_count,
                     a.local_folder_name, a.is_pending, a.source
-             FROM av_actors a {} ORDER BY a.name LIMIT ?{} OFFSET ?{}",
-            search_clause,
+             FROM av_actors a {} {} LIMIT ?{} OFFSET ?{}",
+            search_clause, order_clause,
             if search_param.is_some() { 2 } else { 1 },
             if search_param.is_some() { 3 } else { 2 },
         );
@@ -205,6 +216,9 @@ pub fn update_actress(id: i64, data: serde_json::Value) -> Result<(), crate::uti
         }
         if let Some(src) = data.get("source").and_then(|v| v.as_str()) {
             conn.execute("UPDATE av_actors SET source = ?1 WHERE id = ?2", rusqlite::params![src, id])?;
+        }
+        if let Some(pending) = data.get("is_pending").and_then(|v| v.as_bool()) {
+            conn.execute("UPDATE av_actors SET is_pending = ?1 WHERE id = ?2", rusqlite::params![pending as i32, id])?;
         }
         Ok(())
     })

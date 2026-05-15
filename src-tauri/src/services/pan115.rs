@@ -103,7 +103,7 @@ pub struct LoginStatusResult {
 }
 
 pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> {
-    let url = format!("{}?uid={}", QRCODE_STATUS_API, uid);
+    let url = format!("{}?uid={}&appid=web", QRCODE_STATUS_API, uid);
 
     let resp = CLIENT
         .get(&url)
@@ -115,6 +115,7 @@ pub async fn login_status(uid: &str) -> Result<LoginStatusResult, CommandError> 
     // Get headers BEFORE consuming the body
     let headers = resp.headers().clone();
     let body_text = resp.text().await.unwrap_or_default();
+    log::debug!("扫码状态原始响应: {}", &body_text[..body_text.len().min(300)]);
 
     let json: serde_json::Value = match serde_json::from_str(&body_text) {
         Ok(j) => j,
