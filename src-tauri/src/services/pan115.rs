@@ -302,8 +302,9 @@ pub async fn get_files(cid: &str, page: i64, page_size: i64) -> Result<(Vec<File
         .or_else(|| json["count"].as_i64())
         .unwrap_or(0);
 
-    // 115 returns files in data array (not nested data.data)
-    let data_array = json["data"].as_array()
+    // 115 returns files in data array or data.data (paginated)
+    let data_array = json["data"]["data"].as_array()
+        .or_else(|| json["data"].as_array())
         .map(|a| a.as_slice())
         .unwrap_or(&*EMPTY_ARR);
 

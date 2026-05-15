@@ -23,6 +23,7 @@ pub async fn scan_directory(
     let mut all_files: Vec<FileInfo> = Vec::new();
     collect_video_files(cid, depth, 0, &mut all_files).await?;
 
+    log::info!("扫描完成: {} 个目录中共发现 {} 个视频文件", cid, all_files.len());
     let total = all_files.len() as i64;
     let mut new_count = 0i64;
     let mut updated_count = 0i64;
@@ -136,10 +137,13 @@ async fn collect_video_files(
     }
 
     let (items, total) = match pan115::get_files(cid, 1, 200).await {
-        Ok(r) => r,
+        Ok(r) => {
+            log::info!("扫描目录 cid={}: {} 个项目, {} 总计", cid, r.0.len(), r.1);
+            r
+        }
         Err(e) => {
             log::warn!("跳过无法访问的目录 cid={}: {}", cid, e);
-            return Ok(()); // Skip failed directories, continue scanning others
+            return Ok(());
         }
     };
     let total_pages = (total as f64 / 200.0).ceil() as i64;

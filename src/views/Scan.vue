@@ -158,7 +158,6 @@ const scanProgress = ref(0)
 const scanDone = ref(false)
 const scanStatusText = ref('')
 const scanStats = reactive({ files: 0, new: 0, updated: 0 })
-let scanTimer: any = null
 
 // Selection
 const selectedDirs = ref<{ cid: string; name: string }[]>([])
@@ -221,34 +220,28 @@ function removeSelected(dir: { cid: string; name: string }) {
 async function runScan() {
   scanLoading.value = true
   // Open progress dialog
-  scanDialogVisible.value = true; scanProgress.value = 0; scanDone.value = false
+  scanDialogVisible.value = true; scanProgress.value = 10; scanDone.value = false
   scanStatusText.value = '正在扫描网盘目录...'
   scanStats.files = 0; scanStats.new = 0; scanStats.updated = 0
 
-  // Fake progress animation (will be replaced by real events later)
-  scanTimer = setInterval(() => {
-    if (scanProgress.value < 90) scanProgress.value += Math.random() * 10
-  }, 500)
-
-  try {
+    try {
     let totalNew = 0, totalUpdated = 0, totalAll = 0
     const dirsToScan = selectedDirs.value.length ? selectedDirs.value : [{ cid: currentCid.value, name: '' }]
     for (const dir of dirsToScan) {
       scanStatusText.value = `扫描: ${dir.name || '当前目录'}...`
       const result: any = await store.scanDirectory(dir.cid, scanDepth.value, scanMode.value)
       totalNew += result.new; totalUpdated += result.updated; totalAll += result.total
-      scanStats.files = totalAll
-      scanStats.new = totalNew
-      scanStats.updated = totalUpdated
+      scanStats.files = totalAll; scanStats.new = totalNew; scanStats.updated = totalUpdated
+      scanStatusText.value = `已扫描到影片数量: ${totalAll}`
+      scanProgress.value = Math.min(99, Math.round((totalAll / Math.max(totalAll + 10, 1)) * 100))
     }
     scanProgress.value = 100; scanDone.value = true
-    scanStatusText.value = '扫描完成'
+    scanStatusText.value = `扫描完成，共发现 ${totalAll} 部影片`
     lastResult.value = { total: totalAll, new: totalNew, updated: totalUpdated, deleted: 0 }
   } catch (e: any) {
     scanDialogVisible.value = false
     ElMessage.error('扫描失败: ' + (e.message || e))
   } finally {
-    clearInterval(scanTimer)
     scanLoading.value = false
   }
 }
