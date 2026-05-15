@@ -72,12 +72,6 @@ pub fn get_movies_paginated(
         }
     }
     if let Some(gid) = group_id {
-        // Debug: count how many movies are actually in this group
-        let in_group: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM movie_groups WHERE group_id = ?1", [gid], |r| r.get(0)
-        ).unwrap_or(-1);
-        log::info!("movie_groups表: group_id={} 实际包含 {} 部影片", gid, in_group);
-
         param_values.push(Box::new(gid));
         where_clauses.push(format!(
             "file_id IN (SELECT movie_id FROM movie_groups WHERE group_id = ?{})",
@@ -92,7 +86,6 @@ pub fn get_movies_paginated(
     }
 
     let where_sql = where_clauses.join(" AND ");
-    log::info!("get_movies SQL WHERE: {}", where_sql);
 
     let order = match sort {
         "year_desc" => "year DESC",
@@ -109,7 +102,6 @@ pub fn get_movies_paginated(
         let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
         stmt.query_row(params_ref.as_slice(), |row| row.get(0))?
     };
-    log::info!("get_movies 查询结果: total={} rows, 返回第{}页/每页{}条", total, page, page_size);
 
     // Fetch page
     let offset = (page - 1) * page_size;

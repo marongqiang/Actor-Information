@@ -25,11 +25,6 @@ export const useLibraryStore = defineStore('library', {
         this.movies = result.movies || []
         this.total = result.total || 0
         this.currentPage = page
-      } catch(e: any) {
-        console.error('fetchMovies ERROR:', e)
-        // Force update even on error
-        this.movies = []
-        this.total = 0
       } finally {
         this.loading = false
       }

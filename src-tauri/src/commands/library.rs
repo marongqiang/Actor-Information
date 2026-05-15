@@ -39,8 +39,6 @@ pub fn get_movies(
     page: i64,
     page_size: Option<i64>,
 ) -> Result<MoviesResponse, CommandError> {
-    log::info!("get_movies 收到参数: keyword={:?} year={:?} genre={:?} group_id={:?} is_hidden={:?} favorites_only={:?}",
-        filters.keyword, filters.year, filters.genre, filters.group_id, filters.is_hidden, filters.favorites_only);
     let ps = page_size.unwrap_or(20);
     db::with_db(|conn| {
         let (rows, total) = queries::get_movies_paginated(
@@ -56,39 +54,15 @@ pub fn get_movies(
             ps,
         )?;
 
-        let movies = rows.into_iter().map(|r| {
-            MovieItem {
-                file_id: r.file_id,
-                title: r.title,
-                year: r.year,
-                poster_local: r.poster_local,
-                rating: r.rating,
-                genre: parse_genre(&r.genre),
-                is_hidden: r.is_hidden,
-                progress: Some(r.progress),
-                duration: Some(r.duration),
-            }
+        let movies = rows.into_iter().map(|r| MovieItem {
+            file_id: r.file_id, title: r.title, year: r.year,
+            poster_local: r.poster_local, rating: r.rating,
+            genre: parse_genre(&r.genre), is_hidden: r.is_hidden,
+            progress: Some(r.progress), duration: Some(r.duration),
         }).collect();
 
         Ok(MoviesResponse { movies, total })
     })
-}
-
-fn get_movie_group_info(conn: &rusqlite::Connection, file_id: &str) -> (Vec<String>, bool) {
-    let mut stmt = conn.prepare(
-        "SELECT g.name, g.type FROM groups g JOIN movie_groups mg ON g.id = mg.group_id WHERE mg.movie_id = ?1"
-    ).ok();
-    let mut names = Vec::new();
-    let mut is_fav = false;
-    if let Some(stmt) = stmt.as_mut() {
-        if let Ok(rows) = stmt.query_map([file_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) {
-            for r in rows.flatten() {
-                names.push(r.0);
-                if r.1 == "favorite" { is_fav = true; }
-            }
-        }
-    }
-    (names, is_fav)
 }
 
 fn parse_genre(genre_json: &Option<String>) -> Vec<String> {

@@ -1,8 +1,5 @@
 <template>
   <div class="poster-wall">
-    <div style="background:#f56c6c;color:#fff;padding:2px 10px;font-size:13px;text-align:center;" v-if="store.total > 0">
-      DEBUG: store.total={{ store.total }} | filterGroup={{ filterGroup }} | movies.length={{ store.movies.length }}
-    </div>
     <div class="toolbar">
       <el-input
         v-model="searchKeyword"
