@@ -177,12 +177,13 @@ import type { ActressItem, MergeOptions, MergeResult } from '@/types'
 const route = useRoute()
 const $router = useRouter()
 const store = useActressStore()
-const search = ref(sessionStorage.getItem('at_search') || ''); const showPendingOnly = ref<boolean | undefined>(undefined)
-const page = ref(Number(sessionStorage.getItem('at_page')) || 1); const pageSize = ref(20)
+// Persist page/search via window globals (survives unmount)
+const win = window as any
+const search = ref(win._atSearch || ''); const showPendingOnly = ref<boolean | undefined>(undefined)
+const page = ref(win._atPage || 1); const pageSize = ref(20)
 
-// Save state to sessionStorage (persists across SPA navigation)
-watch(search, (v) => { sessionStorage.setItem('at_search', v) })
-watch(page, (v) => { sessionStorage.setItem('at_page', String(v)) })
+watch(search, (v) => { win._atSearch = v })
+watch(page, (v) => { win._atPage = v })
 
 // Search: simple debounce
 let searchTimer: any = null
