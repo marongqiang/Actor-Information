@@ -115,9 +115,12 @@ pub fn get_actresses_paginated(
 
         let (search_clause, search_param) = if let Some(ref s) = search {
             if !s.is_empty() {
-                (format!("{} {} AND (a.name LIKE ?1 OR EXISTS (SELECT 1 FROM actress_aliases al WHERE al.actress_id = a.id AND al.alias_name LIKE ?1))",
-                    if base_where.is_empty() { "WHERE" } else { &base_where }, if base_where.is_empty() { "" } else { "AND" }),
-                 Some(format!("%{}%", s)))
+                let clause = if base_where.is_empty() {
+                    format!("WHERE (a.name LIKE ?1 OR EXISTS (SELECT 1 FROM actress_aliases al WHERE al.actress_id = a.id AND al.alias_name LIKE ?1))")
+                } else {
+                    format!("{} AND (a.name LIKE ?1 OR EXISTS (SELECT 1 FROM actress_aliases al WHERE al.actress_id = a.id AND al.alias_name LIKE ?1))", base_where)
+                };
+                (clause, Some(format!("%{}%", s)))
             } else {
                 (base_where.to_string(), None)
             }
