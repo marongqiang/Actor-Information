@@ -39,13 +39,17 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
 
     let mut results = Vec::new();
     for source in sources {
+        log::info!("刮削 {}: 开始查询 [{}]", source, query);
         let r = match source.as_str() {
             "tmdb" => scrape_tmdb(query),
             "javbus" => scrape_javbus(query),
             "javdb" => scrape_javdb(query),
-            _ => continue,
+            _ => { log::debug!("刮削源 {} 未实现", source); continue; }
         };
-        if let Ok(r) = r { results.push(r); }
+        match &r {
+            Ok(res) => { log::info!("刮削 {}: 成功, title={}", source, res.title); results.push(r.unwrap()); }
+            Err(e) => log::warn!("刮削 {}: 失败 - {}", source, e),
+        }
     }
     results.sort_by(|a, b| b.score.cmp(&a.score));
     Ok(results)
@@ -75,8 +79,12 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
         .or_else(|| std::env::var("TMDB_API_KEY").ok())
         .ok_or_else(|| CommandError::scrape_failed("TMDB API Key未配置"))?;
 
+    log::info!("TMDB 搜索: query={}", query);
     let url = format!("https://api.themoviedb.org/3/search/movie?api_key={}&query={}&language=zh-CN", api_key, encode(query));
-    let resp = SCRAPE_CLIENT.get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = SCRAPE_CLIENT.get(&url).send().map_err(|e| {
+        log::warn!("TMDB HTTP错误: {}", e);
+        CommandError::network(&e.to_string())
+    })?;
     let json: serde_json::Value = resp.json().map_err(|e| CommandError::network(&e.to_string()))?;
     let results = json["results"].as_array().ok_or_else(|| CommandError::scrape_failed("TMDB无结果"))?;
     if results.is_empty() { return Err(CommandError::scrape_failed("TMDB无匹配")); }
@@ -124,8 +132,15 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_javbus(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.javbus.com/{}", code);
-    let resp = SCRAPE_CLIENT.get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    if !resp.status().is_success() { return Err(CommandError::scrape_failed("JavBus未找到")); }
+    log::info!("JavBus 搜索: url={}", url);
+    let resp = SCRAPE_CLIENT.get(&url).send().map_err(|e| {
+        log::warn!("JavBus HTTP错误: {}", e);
+        CommandError::network(&e.to_string())
+    })?;
+    if !resp.status().is_success() {
+        log::warn!("JavBus HTTP状态: {}", resp.status());
+        return Err(CommandError::scrape_failed(&format!("JavBus未找到 (HTTP {})", resp.status())));
+    }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
 
