@@ -123,7 +123,7 @@
     </div>
 
     <div class="table-footer">
-      <el-pagination v-if="store.total > pageSize" v-model:current-page="page" :page-size="pageSize" :total="store.total"
+      <el-pagination v-if="store.total > pageSize" :current-page="page" :page-size="pageSize" :total="store.total"
         layout="prev, pager, next" @current-change="onPageChange" background size="small" />
       <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="onPageSizeChange">
         <el-option :value="20" label="20条/页" />
@@ -230,8 +230,8 @@ async function fetchData(p: number) {
       includePending: showPendingOnly.value,
       groupId: filterGroupId.value,
     })
-    store.actresses = result.list || []
     store.total = result.total || 0
+    store.actresses = result.list || []
     fetchAliases()
   } catch(e: any) {
     ElMessage.error('查询失败: ' + (e?.message || e))
