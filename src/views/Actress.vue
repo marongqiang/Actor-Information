@@ -85,13 +85,16 @@ const actressGroups = ref<ActressGroupItem[]>([])
 // Image cache: path -> base64 data URL
 const imgSrc = reactive<Record<string, string>>({})
 async function preloadImages() {
-  let count = 0
+  let count = 0; let skipped = 0; let noAvatar = 0
   for (const a of store.actresses) {
-    if (a.avatar_local && !imgSrc[a.avatar_local]) {
-      try { imgSrc[a.avatar_local] = await invoke('read_image_base64', { path: a.avatar_local.replace(/\\/g, '/') }); count++ } catch { imgSrc[a.avatar_local] = '' }
-    }
+    if (!a.avatar_local) { noAvatar++; continue }
+    if (imgSrc[a.avatar_local]) { skipped++; continue }
+    try { imgSrc[a.avatar_local] = await invoke('read_image_base64', { path: a.avatar_local.replace(/\\/g, '/') }); count++ } catch { imgSrc[a.avatar_local] = '' }
   }
-  console.log('preloadImages:', count, 'loaded, total actresses:', store.actresses.length)
+  // Visible feedback
+  if (count > 0) ElMessage.success(`头像已加载 ${count} 个`)
+  else if (noAvatar > 0) ElMessage.warning(`${noAvatar} 个演员无头像路径`)
+  else if (skipped > 0) ElMessage.info(`${skipped} 个已缓存`)
 }
 
 async function doSearch() { page.value = 1; await store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value); preloadImages() }
