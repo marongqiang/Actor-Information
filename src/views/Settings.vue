@@ -6,29 +6,30 @@
       <!-- 刮削源 -->
       <el-tab-pane label="刮削源" name="scrape">
         <el-form label-width="120px" size="small">
-          <el-form-item label="刮削数据源">
-            <el-checkbox-group v-model="scrapeSources">
-              <el-checkbox value="tmdb" label="TMDB" />
-              <el-checkbox value="imdb" label="IMDb" />
-              <el-checkbox value="douban" label="豆瓣" />
-              <el-checkbox value="javbus" label="JavBus" />
-              <el-checkbox value="javdb" label="JavDB" />
-              <el-checkbox value="fanza" label="Fanza" />
-              <el-checkbox value="airav" label="Airav" />
-              <el-checkbox value="xcity" label="XCITY" />
-              <el-checkbox value="mgstage" label="MGStage" />
-              <el-checkbox value="fc2" label="FC2" />
-              <el-checkbox value="jav321" label="Jav321" />
-              <el-checkbox value="javlibrary" label="JavLibrary" />
-              <el-checkbox value="arzon" label="Arzon" />
-            </el-checkbox-group>
+          <el-form-item label="刮削源">
+            <el-table :data="sourceTable" style="width:100%;" size="small" max-height="400">
+              <el-table-column width="40">
+                <template #default="{ row }">
+                  <el-checkbox :model-value="scrapeSources.includes(row.key)" @change="(v:boolean) => toggleSource(row.key, v)" />
+                </template>
+              </el-table-column>
+              <el-table-column prop="name" label="名称" width="100" />
+              <el-table-column prop="site" label="网站" show-overflow-tooltip />
+              <el-table-column prop="type" label="类型" width="70" />
+              <el-table-column label="已实现" width="70">
+                <template #default="{ row }"><el-tag :type="row.done ? 'success' : 'info'" size="small">{{ row.done ? '是' : '否' }}</el-tag></template>
+              </el-table-column>
+              <el-table-column label="API Key" width="200" v-if="hasApiKey">
+                <template #default="{ row }">
+                  <el-input v-if="row.key === 'tmdb'" v-model="tmdbApiKey" type="password" show-password size="small" placeholder="TMDB API Key" />
+                  <span v-else style="color:#666;font-size:11px;">无需</span>
+                </template>
+              </el-table-column>
+            </el-table>
           </el-form-item>
           <el-form-item label="视频扩展名">
             <el-input v-model="videoExts" style="width: 400px;" placeholder="mp4,mkv,avi,mov,rmvb,flv,wmv,ts,iso,m2ts" />
             <span style="font-size: 11px; color: #888; margin-left: 8px;">逗号分隔，扫描时仅收集这些格式</span>
-          </el-form-item>
-          <el-form-item label="TMDB API Key">
-            <el-input v-model="tmdbApiKey" type="password" show-password style="width: 320px;" placeholder="用于TMDB刮削" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="saveScrapeSettings">保存刮削设置</el-button>
@@ -198,7 +199,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -219,6 +220,36 @@ const cookieLoading = ref(false)
 const scrapeSources = ref<string[]>([])
 const videoExts = ref('')
 const tmdbApiKey = ref('')
+
+const hasApiKey = computed(() => scrapeSources.value.includes('tmdb'))
+
+const sourceTable = [
+  { key: 'tmdb', name: 'TMDB', site: 'api.themoviedb.org', type: '通用', done: true },
+  { key: 'imdb', name: 'IMDb', site: 'www.imdb.com', type: '通用', done: true },
+  { key: 'douban', name: '豆瓣', site: 'movie.douban.com', type: '通用', done: true },
+  { key: 'javbus', name: 'JavBus', site: 'www.javbus.com', type: 'AV', done: true },
+  { key: 'javdb', name: 'JavDB', site: 'javdb.com', type: 'AV', done: true },
+  { key: 'javlibrary', name: 'JavLibrary', site: 'www.javlibrary.com', type: 'AV', done: true },
+  { key: 'fanza', name: 'Fanza', site: 'www.dmm.co.jp', type: 'AV', done: true },
+  { key: 'arzon', name: 'Arzon', site: 'www.arzon.jp', type: 'AV', done: true },
+  { key: 'mgstage', name: 'MGStage', site: 'www.mgstage.com', type: 'AV', done: true },
+  { key: 'fc2', name: 'FC2', site: 'adult.contents.fc2.com', type: 'AV', done: true },
+  { key: 'airav', name: 'Airav', site: 'www.airav.wiki', type: 'AV', done: false },
+  { key: 'xcity', name: 'XCITY', site: 'www.xcity.jp', type: 'AV', done: false },
+  { key: 'jav321', name: 'Jav321', site: 'www.jav321.com', type: 'AV', done: false },
+  { key: 'prestige', name: 'Prestige', site: 'www.prestige-av.com', type: 'AV', done: false },
+  { key: 'avsox', name: 'Avsox', site: 'avsox.cyou', type: 'AV', done: false },
+  { key: 'njav', name: 'Njav', site: 'njav.tv', type: 'AV', done: false },
+  { key: 'getav', name: 'GetAV', site: 'getav.info', type: 'AV', done: false },
+  { key: 'whostv', name: 'WhosTV', site: 'whostv.net', type: 'AV', done: false },
+  { key: 'jphoo', name: 'JpHoo', site: 'jphoo.com', type: 'AV', done: false },
+  { key: 'fc2ppvdb', name: 'FC2PPVDB', site: 'fc2ppvdb.com', type: 'AV', done: false },
+]
+
+function toggleSource(key: string, enabled: boolean) {
+  if (enabled) { if (!scrapeSources.value.includes(key)) scrapeSources.value.push(key) }
+  else { scrapeSources.value = scrapeSources.value.filter(s => s !== key) }
+}
 
 // Proxy
 const proxyEnabled = ref(false)
