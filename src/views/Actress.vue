@@ -97,9 +97,12 @@ async function preloadImages() {
   else if (skipped > 0) ElMessage.info(`${skipped} 个已缓存`)
 }
 
-async function doSearch() { page.value = 1; await store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value); preloadImages() }
-async function onPageChange(p: number) { page.value = p; await store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value); preloadImages() }
-async function onPageSizeChange() { page.value = 1; await store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value); preloadImages() }
+async function doSearch() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+function onPageSizeChange() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+
+// Auto-preload images when actresses array changes
+watch(() => store.actresses, () => { preloadImages() }, { deep: false })
 
 function goDetail(id: number) { router.push(`/actress/${id}`) }
 
