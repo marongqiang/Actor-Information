@@ -2,7 +2,7 @@
   <div class="actress-table-page">
     <div class="toolbar">
       <h2>演员表格</h2>
-      <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" @change="doSearch()" @keyup.enter="doSearch()" />
+      <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" />
       <el-button-group size="small">
         <el-button :type="showPendingOnly === undefined ? 'primary' : ''" @click="showPendingOnly = undefined; doSearch()">全部</el-button>
         <el-button :type="showPendingOnly === true ? 'warning' : ''" @click="showPendingOnly = true; doSearch()">待审核</el-button>
@@ -167,20 +167,30 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useActressStore } from '@/stores/actress'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { ActressItem, MergeOptions, MergeResult } from '@/types'
 
 const route = useRoute()
+const $router = useRouter()
 const store = useActressStore()
-const search = ref(store.tableSearch); const showPendingOnly = ref<boolean | undefined>(store.tableShowPending); const page = ref(store.tablePage); const pageSize = ref(20)
+const search = ref(store.tableSearch); const showPendingOnly = ref<boolean | undefined>(store.tableShowPending)
+const page = ref(Number(route.query.page) || store.tablePage); const pageSize = ref(20)
 
-// Save state to store on changes
+// Save state to store
 watch(search, (v) => { store.tableSearch = v })
 watch(showPendingOnly, (v) => { store.tableShowPending = v })
-watch(page, (v) => { store.tablePage = v })
+watch(page, (v) => { store.tablePage = v; if (v > 1) $router.replace({ query: { ...route.query, page: v } }) })
+
+// Search: trigger on input with debounce
+let searchTimer: any = null
+watch(search, (v) => {
+  clearTimeout(searchTimer)
+  store.tableSearch = v
+  searchTimer = setTimeout(() => { page.value = 1; fetchData(1) }, 300)
+})
 const scanning = ref(false); const selectedRows = ref<ActressItem[]>([])
 
 const filterGroupId = ref<number | undefined>()
