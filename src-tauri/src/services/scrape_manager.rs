@@ -467,56 +467,61 @@ fn scrape_fc2(query: &str) -> Result<ScrapeResult, CommandError> {
 
 fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
-    // Try search page first
-    let url = format!("https://www.jphoo1.com/search?keyword={}", encode(&code));
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    if !resp.status().is_success() { return Err(CommandError::scrape_failed("JpHoo不可用")); }
-    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&html);
-    let s_item = scraper::Selector::parse(".video-item a, .item a, .list a").unwrap();
-    let s_cover = scraper::Selector::parse("img").unwrap();
+    // Use JpHoo's own search API (returns JSON)
+    let url = format!("https://www.jphoo1.com/prod-api/v2/search/list?pageNum=1&pageSize=5&operationName=works&keyword={}", encode(&code));
+    log::info!("JpHoo API请求: {}", url);
 
-    let mut title = None;
-    let mut poster = None;
-    for item in doc.select(&s_item) {
-        if let Some(href) = item.value().attr("href") {
-            if href.contains(&code) || item.text().any(|t| t.contains(&code)) {
-                title = Some(item.text().collect::<String>().trim().to_string());
-                if poster.is_none() {
-                    for img in item.select(&s_cover) {
-                        let src = img.value().attr("src").or_else(|| img.value().attr("data-src"));
-                        if let Some(src) = src {
-                            poster = Some(src.to_string());
-                            break;
-                        }
-                    }
-                }
-                break;
-            }
-        }
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() {
+        log::warn!("JpHoo API HTTP {}", resp.status());
+        return Err(CommandError::scrape_failed(&format!("JpHoo不可用 (HTTP {})", resp.status())));
     }
-    let title = title.unwrap_or_else(|| query.to_string());
-    if poster.is_none() {
-        // Try direct page
-        let url2 = format!("https://www.jphoo1.com/{}", code);
-        if let Ok(resp) = get_client().get(&url2).send() {
-            if let Ok(html2) = resp.text() {
-                let doc2 = scraper::Html::parse_document(&html2);
-                for img in doc2.select(&s_cover) {
-                    // Check src and data-src (lazy loading)
-                    let src = img.value().attr("src").or_else(|| img.value().attr("data-src"));
-                    if let Some(src) = src {
-                        if !src.contains("logo") && !src.contains("icon") {
-                            poster = Some(src.to_string());
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    log::info!("JpHoo API响应: {}", &body[..body.len().min(500)]);
+
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| CommandError::scrape_failed(&format!("JpHoo JSON解析失败: {}", e)))?;
+
+    let list = json["data"]["list"].as_array()
+        .or_else(|| json["data"]["rows"].as_array())
+        .or_else(|| json["data"].as_array())
+        .ok_or_else(|| CommandError::scrape_failed("JpHoo返回格式异常"))?;
+
+    if list.is_empty() { return Err(CommandError::scrape_failed("JpHoo无结果")); }
+
+    let item = &list[0];
+    let title = item["title"].as_str()
+        .or_else(|| item["name"].as_str())
+        .unwrap_or(query).to_string();
+    let year = item["releaseDate"].as_str()
+        .or_else(|| item["year"].as_str())
+        .and_then(|d| d[..4].parse().ok());
+    let poster = item["cover"].as_str()
+        .or_else(|| item["img"].as_str())
+        .or_else(|| item["image"].as_str())
+        .map(|s| if s.starts_with("http") { s.to_string() } else { format!("https://www.jphoo1.com{}", s) });
+    let overview = item["description"].as_str().map(|s| s.to_string());
+    let runtime = item["duration"].as_i64().map(|v| v as i32);
+    let mut actors = Vec::new();
+    if let Some(arr) = item["actors"].as_array() {
+        for a in arr { if let Some(n) = a["name"].as_str() { actors.push(n.to_string()); } }
     }
-    log::info!("JpHoo 结果: title={} poster={:?}", title, poster);
-    Ok(ScrapeResult { source: "jphoo".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: None, score: 55 })
+    if let Some(arr) = item["actressList"].as_array() {
+        for a in arr { if let Some(n) = a.as_str() { actors.push(n.to_string()); } }
+    }
+    let mut genres = Vec::new();
+    if let Some(arr) = item["tags"].as_array() {
+        for t in arr { if let Some(n) = t.as_str() { genres.push(n.to_string()); } }
+    }
+
+    Ok(ScrapeResult {
+        source: "jphoo".into(), title, year, poster_url: poster, backdrop_url: None,
+        overview, rating: None, runtime, director: None,
+        genre: if genres.is_empty() { None } else { Some(genres) },
+        actors: if actors.is_empty() { None } else { Some(actors) },
+        score: 70,
+    })
 }
 
 fn encode(s: &str) -> String {
