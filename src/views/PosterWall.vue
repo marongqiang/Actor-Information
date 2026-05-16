@@ -173,8 +173,13 @@ async function rescrapeMovie() {
 
 onMounted(async () => {
   await store.fetchGroups()
-  // watch(immediate) 已在 setup 阶段用正确的 group_id 触发了 doSearch()
-  // 此处不能再调 doSearch()，否则会覆盖筛选结果
+  // Listen for forced navigation refresh
+  window.addEventListener('nav-refresh', ((e: CustomEvent) => {
+    if (e.detail.path === '/') {
+      filterGroup.value = e.detail.query.group_id || undefined
+      doSearch()
+    }
+  }) as EventListener)
 })
 </script>
 

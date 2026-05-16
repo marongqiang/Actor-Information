@@ -9,7 +9,7 @@
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/' }"
               @contextmenu.prevent="openGroupMenu($event, 'poster')">
-              <el-icon><PictureFilled /></el-icon><span @click.stop="navTo('/')">海报墙</span>
+              <el-icon><PictureFilled /></el-icon><span @click="navTo('/')">海报墙</span>
               <el-icon class="arrow" :class="{ open: expanded.poster }" @click.stop="expanded.poster = !expanded.poster"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.poster">
@@ -123,7 +123,10 @@ let groupFormMode: 'add' | 'rename' | 'delete' = 'add'; let editingGroupId: numb
 const $router = useRouter()
 
 function navTo(path: string, query?: Record<string, any>) {
-  $router.push({ path, query: query || {} })
+  const q = query || {}
+  $router.push({ path, query: q })
+  // Fallback: force reload via event if route didn't change
+  window.dispatchEvent(new CustomEvent('nav-refresh', { detail: { path, query: q } }))
 }
 
 function openGroupMenu(e: MouseEvent, type: GroupCtx) {
