@@ -8,9 +8,12 @@
           <!-- 海报墙 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/' }"
+              @click="navTo('/')"
               @contextmenu.prevent="openGroupMenu($event, 'poster')">
-              <el-icon><PictureFilled /></el-icon><span @click="navTo('/')">海报墙</span>
-              <el-icon class="arrow" :class="{ open: expanded.poster }" @click.stop="expanded.poster = !expanded.poster"><ArrowRight /></el-icon>
+              <el-icon><PictureFilled /></el-icon><span>海报墙</span>
+              <span class="arrow-box" @click.stop="expanded.poster = !expanded.poster">
+                <el-icon class="arrow" :class="{ open: expanded.poster }"><ArrowRight /></el-icon>
+              </span>
             </div>
             <template v-if="expanded.poster">
               <div v-for="g in posterGroups" :key="'pg_'+g.id" class="nav-sub-item"
@@ -22,9 +25,10 @@
           <!-- 收藏影片 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/favorites' }"
+              @click="navTo('/favorites')"
               @contextmenu.prevent="openGroupMenu($event, 'favorite')">
-              <el-icon><StarFilled /></el-icon><span @click.stop="navTo('/favorites')">收藏影片</span>
-              <el-icon class="arrow" :class="{ open: expanded.favorites }" @click.stop="expanded.favorites = !expanded.favorites"><ArrowRight /></el-icon>
+              <el-icon><StarFilled /></el-icon><span>收藏影片</span>
+              <span class="arrow-box" @click.stop="expanded.favorites = !expanded.favorites"><el-icon class="arrow" :class="{ open: expanded.favorites }"><ArrowRight /></el-icon></span>
             </div>
             <template v-if="expanded.favorites">
               <div v-for="g in favGroups" :key="'fg_'+g.id" class="nav-sub-item"
@@ -36,9 +40,10 @@
           <!-- 演员库 + 分组 -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/actress' }"
+              @click="navTo('/actress')"
               @contextmenu.prevent="openGroupMenu($event, 'actress')">
-              <el-icon><UserFilled /></el-icon><span @click.stop="navTo('/actress')">演员库</span>
-              <el-icon class="arrow" :class="{ open: expanded.actress }" @click.stop="expanded.actress = !expanded.actress"><ArrowRight /></el-icon>
+              <el-icon><UserFilled /></el-icon><span>演员库</span>
+              <span class="arrow-box" @click.stop="expanded.actress = !expanded.actress"><el-icon class="arrow" :class="{ open: expanded.actress }"><ArrowRight /></el-icon></span>
             </div>
             <template v-if="expanded.actress">
               <div v-for="g in actressGroups" :key="'ag_'+g.id" class="nav-sub-item"
@@ -215,8 +220,10 @@ body { font-family: 'Microsoft YaHei', sans-serif; background: #0f0f1a; color: #
 .nav-item { display: flex; align-items: center; gap: 8px; padding: 9px 16px; cursor: pointer; font-size: 13px; color: #a0a0b0; transition: background 0.15s; }
 .nav-item:hover { background: #252540; color: #e0e0e0; }
 .nav-item.active { color: #409eff; background: rgba(64,158,255,0.1); }
-.nav-item .arrow { margin-left: auto; font-size: 10px; transition: transform 0.2s; }
+.nav-item .arrow { font-size: 10px; transition: transform 0.2s; }
 .nav-item .arrow.open { transform: rotate(90deg); }
+.arrow-box { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; background: rgba(255,255,255,0.05); }
+.arrow-box:hover { background: rgba(255,255,255,0.12); }
 .nav-sub-item { padding: 6px 16px 6px 36px; cursor: pointer; font-size: 12px; color: #808090; display: flex; align-items: center; justify-content: space-between; }
 .nav-sub-item:hover { background: #252540; color: #c0c0d0; }
 .nav-sub-item.active { color: #409eff; background: rgba(64,158,255,0.08); }
