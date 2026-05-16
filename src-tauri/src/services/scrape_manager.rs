@@ -19,13 +19,33 @@ pub struct ScrapeResult {
     pub score: i32,
 }
 
-static SCRAPE_CLIENT: once_cell::sync::Lazy<reqwest::blocking::Client> = once_cell::sync::Lazy::new(|| {
-    reqwest::blocking::Client::builder()
+fn build_scrape_client() -> reqwest::blocking::Client {
+    let mut builder = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .build()
-        .expect("Failed to build scrape client")
-});
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+    // Check proxy config
+    if let Ok(Some(enabled)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_enabled")) {
+        if enabled == "true" {
+            if let Ok(Some(host)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_host")) {
+                let port = db::with_db(|c| crate::db::queries::get_config(c, "proxy_port"))
+                    .ok().flatten().and_then(|p| p.parse().ok()).unwrap_or(1080);
+                let proxy_url = format!("http://{}:{}", host, port);
+                if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+                    builder = builder.proxy(proxy);
+                    log::info!("刮削使用代理: {}", proxy_url);
+                }
+            }
+        }
+    }
+    builder.build().expect("Failed to build scrape client")
+}
+
+fn get_client() -> &'static reqwest::blocking::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| build_scrape_client())
+}
 
 /// Synchronous scrape - call from spawn_blocking context
 pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult>, CommandError> {
@@ -81,7 +101,7 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
 
     log::info!("TMDB 搜索: query={}", query);
     let url = format!("https://api.themoviedb.org/3/search/movie?api_key={}&query={}&language=zh-CN", api_key, encode(query));
-    let resp = SCRAPE_CLIENT.get(&url).send().map_err(|e| {
+    let resp = get_client().get(&url).send().map_err(|e| {
         log::warn!("TMDB HTTP错误: {}", e);
         CommandError::network(&e.to_string())
     })?;
@@ -103,7 +123,7 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let mut actors = Vec::new();
     if tmdb_id > 0 {
         let cu = format!("https://api.themoviedb.org/3/movie/{}/credits?api_key={}&language=zh-CN", tmdb_id, api_key);
-        if let Ok(resp) = SCRAPE_CLIENT.get(&cu).send() {
+        if let Ok(resp) = get_client().get(&cu).send() {
             if let Ok(cj) = resp.json::<serde_json::Value>() {
                 if let Some(crew) = cj["crew"].as_array() {
                     for c in crew { if c["job"].as_str() == Some("Director") { director = c["name"].as_str().map(|s| s.to_string()); break; } }
@@ -117,7 +137,7 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
 
     let genre_names = if !genre_ids.is_empty() {
         let gu = format!("https://api.themoviedb.org/3/genre/movie/list?api_key={}&language=zh-CN", api_key);
-        SCRAPE_CLIENT.get(&gu).send().ok().and_then(|r| r.json::<serde_json::Value>().ok()).and_then(|gj|
+        get_client().get(&gu).send().ok().and_then(|r| r.json::<serde_json::Value>().ok()).and_then(|gj|
             gj["genres"].as_array().map(|a| a.iter().filter_map(|g|
                 if genre_ids.contains(&g["id"].as_i64().unwrap_or(0)) { g["name"].as_str().map(|s| s.to_string()) } else { None }
             ).collect())
@@ -133,7 +153,7 @@ fn scrape_javbus(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.javbus.com/{}", code);
     log::info!("JavBus 搜索: url={}", url);
-    let resp = SCRAPE_CLIENT.get(&url).send().map_err(|e| {
+    let resp = get_client().get(&url).send().map_err(|e| {
         log::warn!("JavBus HTTP错误: {}", e);
         CommandError::network(&e.to_string())
     })?;
@@ -171,7 +191,7 @@ fn scrape_javbus(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_javdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://javdb.com/search?q={}&f=all", code);
-    let resp = SCRAPE_CLIENT.get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("JavDB搜索失败")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -180,7 +200,7 @@ fn scrape_javdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href").map(|s| format!("https://javdb.com{}", s)));
     let detail_url = match detail_url { Some(u) => u, None => return Err(CommandError::scrape_failed("JavDB无结果")) };
 
-    let resp = SCRAPE_CLIENT.get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
 
