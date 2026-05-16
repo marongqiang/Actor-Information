@@ -2,7 +2,7 @@
   <div class="actress-table-page">
     <div class="toolbar">
       <h2>演员表格</h2>
-      <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" @change="doSearch" />
+      <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" @change="doSearch()" @keyup.enter="doSearch()" />
       <el-button-group size="small">
         <el-button :type="showPendingOnly === undefined ? 'primary' : ''" @click="showPendingOnly = undefined; doSearch()">全部</el-button>
         <el-button :type="showPendingOnly === true ? 'warning' : ''" @click="showPendingOnly = true; doSearch()">待审核</el-button>
