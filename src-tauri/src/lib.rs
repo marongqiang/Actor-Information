@@ -61,6 +61,7 @@ pub fn run() {
             commands::library::hide_movies,
             commands::library::unhide_movies,
             commands::library::batch_set_scrape_status,
+            commands::library::get_actress_movies,
             // Groups
             commands::groups::get_groups,
             commands::groups::clean_all_groups,
@@ -107,6 +108,7 @@ pub fn run() {
             commands::config::get_secure_config,
             commands::config::clear_secure_config,
             commands::config::read_image_base64,
+            commands::config::list_folder_images,
             // Task
             commands::task::get_pending_tasks,
             commands::task::resume_task,

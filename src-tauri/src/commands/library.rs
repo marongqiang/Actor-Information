@@ -191,6 +191,31 @@ pub fn hide_movies(file_ids: Vec<String>) -> Result<(), CommandError> {
     })
 }
 
+/// Find movies associated with an actress by name
+#[tauri::command]
+pub fn get_actress_movies(actress_name: String) -> Result<Vec<MovieItem>, CommandError> {
+    db::with_db(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT m.file_id, m.title, m.year, m.poster_local, m.rating, m.genre, m.is_hidden,
+                    COALESCE(p.progress,0), COALESCE(p.duration,0), COALESCE(m.scrape_status,0)
+             FROM movies m LEFT JOIN play_progress p ON m.file_id=p.file_id
+             WHERE m.file_id IN (SELECT movie_id FROM movie_actors ma JOIN actors a ON ma.actor_id=a.id WHERE a.name=?1)
+             ORDER BY m.year DESC LIMIT 50",
+        )?;
+        let movies: Vec<MovieItem> = stmt.query_map([&actress_name], |row| {
+            Ok(MovieItem {
+                file_id: row.get(0)?, title: row.get(1)?, year: row.get(2)?,
+                poster_local: row.get(3)?, rating: row.get(4)?,
+                genre: parse_genre(&row.get::<_,Option<String>>(5)?),
+                is_hidden: row.get::<_,i32>(6)?!=0,
+                progress: Some(row.get(7)?), duration: Some(row.get(8)?),
+                scrape_status: row.get(9)?,
+            })
+        })?.filter_map(|r| r.ok()).collect();
+        Ok(movies)
+    })
+}
+
 #[tauri::command]
 pub fn unhide_movies(file_ids: Vec<String>) -> Result<(), CommandError> {
     db::with_db(|conn| {
