@@ -177,13 +177,12 @@ import type { ActressItem, MergeOptions, MergeResult } from '@/types'
 const route = useRoute()
 const $router = useRouter()
 const store = useActressStore()
-const search = ref(store.tableSearch); const showPendingOnly = ref<boolean | undefined>(store.tableShowPending)
-const page = ref(Number(route.query.page) || store.tablePage); const pageSize = ref(20)
+const search = ref(sessionStorage.getItem('at_search') || ''); const showPendingOnly = ref<boolean | undefined>(undefined)
+const page = ref(Number(sessionStorage.getItem('at_page')) || 1); const pageSize = ref(20)
 
-// Save state to store
-watch(search, (v) => { store.tableSearch = v })
-watch(showPendingOnly, (v) => { store.tableShowPending = v })
-watch(page, (v) => { store.tablePage = v })
+// Save state to sessionStorage (persists across SPA navigation)
+watch(search, (v) => { sessionStorage.setItem('at_search', v) })
+watch(page, (v) => { sessionStorage.setItem('at_page', String(v)) })
 
 // Search: simple debounce
 let searchTimer: any = null
