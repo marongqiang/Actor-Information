@@ -82,7 +82,10 @@ const ctx = reactive({ visible: false, x: 0, y: 0, actress: null as ActressItem 
 const ctxSub = ref('')
 const actressGroups = ref<ActressGroupItem[]>([])
 
-function assetUrl(path: string) { return convertFileSrc(path) }
+function assetUrl(path: string) {
+  // convertFileSrc expects a valid file path, replace backslashes
+  return convertFileSrc(path.replace(/\\/g, '/'))
+}
 
 function doSearch() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }

@@ -99,7 +99,7 @@ const ctxSub = ref('')
 const favGroups = ref<GroupItem[]>([])
 const posterGroups = ref<GroupItem[]>([])
 
-function assetUrl(p: string) { return convertFileSrc(p) }
+function assetUrl(p: string) { return convertFileSrc(p.replace(/\\/g, '/')) }
 
 watch(() => route.query.group_id, (val) => {
   filterGroupId.value = val ? Number(val) : undefined; doSearch()

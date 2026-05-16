@@ -63,9 +63,7 @@ const router = useRouter()
 const movie = ref<MovieDetail | null>(null)
 const groups = ref<GroupItem[]>([])
 
-function assetUrl(path: string) {
-  return convertFileSrc(path)
-}
+function assetUrl(path: string) { return convertFileSrc(path.replace(/\\/g, '/')) }
 
 function formatSize(bytes: number) {
   if (!bytes) return '未知'

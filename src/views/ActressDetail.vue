@@ -54,7 +54,7 @@ const route = useRoute()
 const actress = ref<ActressItem | null>(null)
 const movies = ref<any[]>([])
 
-function assetUrl(p: string) { return convertFileSrc(p) }
+function assetUrl(p: string) { return convertFileSrc(p.replace(/\\/g, '/')) }
 
 onMounted(async () => {
   const id = Number(route.params.id)
