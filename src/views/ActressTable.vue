@@ -175,13 +175,20 @@ import type { ActressItem, MergeOptions, MergeResult } from '@/types'
 
 const route = useRoute()
 const store = useActressStore()
-const search = ref(''); const showPendingOnly = ref<boolean | undefined>(undefined); const page = ref(1); const pageSize = ref(20)
+const search = ref(store.tableSearch); const showPendingOnly = ref<boolean | undefined>(store.tableShowPending); const page = ref(store.tablePage); const pageSize = ref(20)
+
+// Save state to store on changes
+watch(search, (v) => { store.tableSearch = v })
+watch(showPendingOnly, (v) => { store.tableShowPending = v })
+watch(page, (v) => { store.tablePage = v })
 const scanning = ref(false); const selectedRows = ref<ActressItem[]>([])
 
 const filterGroupId = ref<number | undefined>()
+let firstLoad = true
 watch(() => route.query.group_id, (val) => {
   filterGroupId.value = val ? Number(val) : undefined
-  doSearch()
+  doSearch(firstLoad ? false : true) // don't reset page on initial load (restore from store)
+  firstLoad = false
 }, { immediate: true })
 
 // Inline editing (统一用文本输入)
@@ -197,7 +204,7 @@ const mergeOpts = ref<MergeOptions>({ mergeFolders: true, conflictPolicy: 'renam
 const mergeResult = ref<MergeResult | null>(null)
 const dupDialog = ref(false)
 
-function doSearch() { page.value = 1; fetchData(1) }
+function doSearch(resetPage = true) { if (resetPage) page.value = 1; fetchData(page.value) }
 function onPageChange(p: number) { page.value = p; fetchData(p) }
 function onPageSizeChange() { page.value = 1; fetchData(1) }
 function fetchData(p: number) {
