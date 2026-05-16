@@ -222,7 +222,7 @@ body { font-family: 'Microsoft YaHei', sans-serif; background: #0f0f1a; color: #
 .nav-item.active { color: #409eff; background: rgba(64,158,255,0.1); }
 .nav-item .arrow { font-size: 10px; transition: transform 0.2s; }
 .nav-item .arrow.open { transform: rotate(90deg); }
-.arrow-box { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; background: rgba(255,255,255,0.05); }
+.arrow-box { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 3px; cursor: pointer; background: rgba(255,255,255,0.05); margin-left: auto; flex-shrink: 0; }
 .arrow-box:hover { background: rgba(255,255,255,0.12); }
 .nav-sub-item { padding: 6px 16px 6px 36px; cursor: pointer; font-size: 12px; color: #808090; display: flex; align-items: center; justify-content: space-between; }
 .nav-sub-item:hover { background: #252540; color: #c0c0d0; }
