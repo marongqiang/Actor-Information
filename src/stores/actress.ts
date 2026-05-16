@@ -28,7 +28,7 @@ export const useActressStore = defineStore('actress', {
       this.loading = true
       try {
         const result: any = await invoke('get_actresses_paginated', {
-          page, pageSize, search, sortField, sortOrder, includePending, groupId,
+          page, pageSize, search: search || null, sortField, sortOrder, includePending, groupId,
         })
         this.actresses = result.list || []
         this.total = result.total || 0
