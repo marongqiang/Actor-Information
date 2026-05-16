@@ -106,6 +106,7 @@ pub fn run() {
             commands::config::set_secure_config,
             commands::config::get_secure_config,
             commands::config::clear_secure_config,
+            commands::config::read_image_base64,
             // Task
             commands::task::get_pending_tasks,
             commands::task::resume_task,
