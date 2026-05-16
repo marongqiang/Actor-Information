@@ -7,7 +7,7 @@
       <el-tab-pane label="刮削源" name="scrape">
         <el-form label-width="120px" size="small">
           <el-form-item label="刮削源">
-            <el-table :data="sourceTable" style="width:100%;" size="small" max-height="400">
+            <el-table :data="sourceTable" style="width:100%;" size="small" max-height="400" border resizable stripe>
               <el-table-column width="40">
                 <template #default="{ row }">
                   <el-checkbox :model-value="scrapeSources.includes(row.key)" @change="(v:boolean) => toggleSource(row.key, v)" />
@@ -242,7 +242,7 @@ const sourceTable = [
   { key: 'njav', name: 'Njav', site: 'njav.tv', type: 'AV', done: false },
   { key: 'getav', name: 'GetAV', site: 'getav.info', type: 'AV', done: false },
   { key: 'whostv', name: 'WhosTV', site: 'whostv.net', type: 'AV', done: false },
-  { key: 'jphoo', name: 'JpHoo', site: 'jphoo.com', type: 'AV', done: false },
+  { key: 'jphoo', name: 'JpHoo', site: 'www.jphoo1.com', type: 'AV', done: true },
   { key: 'fc2ppvdb', name: 'FC2PPVDB', site: 'fc2ppvdb.com', type: 'AV', done: false },
 ]
 

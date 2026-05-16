@@ -71,7 +71,8 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             "arzon" => scrape_arzon(query),
             "mgstage" => scrape_mgstage(query),
             "fc2" => scrape_fc2(query),
-            "airav" | "jav321" | "xcity" | "prestige" | "avsox" | "njav" | "getav" | "whostv" | "jphoo" | "fc2ppvdb" => {
+            "jphoo" => scrape_jphoo(query),
+            "airav" | "jav321" | "xcity" | "prestige" | "avsox" | "njav" | "getav" | "whostv" | "fc2ppvdb" => {
                 // These sources require complex anti-bot handling
                 log::debug!("刮削源 {} 尚未实现(被反爬保护)", source);
                 continue;
@@ -433,6 +434,58 @@ fn scrape_fc2(query: &str) -> Result<ScrapeResult, CommandError> {
         if t.contains("販売開始日") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
     }
     Ok(ScrapeResult { source: "fc2".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: None, score: 55 })
+}
+
+// ─── JpHoo (blocking HTML parse) ───
+
+fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.to_uppercase().replace(['-', '_', ' '], "");
+    // Try search page first
+    let url = format!("https://www.jphoo1.com/search?keyword={}", encode(&code));
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() { return Err(CommandError::scrape_failed("JpHoo不可用")); }
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_item = scraper::Selector::parse(".video-item a, .item a, .list a").unwrap();
+    let s_cover = scraper::Selector::parse("img").unwrap();
+
+    let mut title = None;
+    let mut poster = None;
+    for item in doc.select(&s_item) {
+        if let Some(href) = item.value().attr("href") {
+            if href.contains(&code) || item.text().any(|t| t.contains(&code)) {
+                title = Some(item.text().collect::<String>().trim().to_string());
+                if poster.is_none() {
+                    for img in item.select(&s_cover) {
+                        if let Some(src) = img.value().attr("src") {
+                            poster = Some(src.to_string());
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+    let title = title.unwrap_or_else(|| query.to_string());
+    if poster.is_none() {
+        // Try direct page
+        let url2 = format!("https://www.jphoo1.com/{}", code);
+        if let Ok(resp) = get_client().get(&url2).send() {
+            if let Ok(html2) = resp.text() {
+                let doc2 = scraper::Html::parse_document(&html2);
+                for img in doc2.select(&s_cover) {
+                    if let Some(src) = img.value().attr("src") {
+                        if !src.contains("logo") && !src.contains("icon") {
+                            poster = Some(src.to_string());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(ScrapeResult { source: "jphoo".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: None, score: 55 })
 }
 
 fn encode(s: &str) -> String {
