@@ -126,7 +126,7 @@ const years = computed(() => {
   return Array.from({ length: 40 }, (_, i) => y - i)
 })
 
-function assetUrl(path: string) { return convertFileSrc(path.replace(/\\/g, '/')) }
+function assetUrl(path: string) { return path.startsWith('http') ? path : convertFileSrc(path.replace(/\\/g, '/')) }
 
 function doSearch() {
   currentPage.value = 1

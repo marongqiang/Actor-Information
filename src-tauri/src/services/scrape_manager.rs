@@ -99,11 +99,20 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
             let _ = std::fs::create_dir_all(&images_dir);
             let filename = format!("{}.jpg", &file_id[..file_id.len().min(16)]);
             let filepath = images_dir.join(&filename);
-            if let Ok(resp) = get_client().get(poster_url).send() {
-                if let Ok(bytes) = resp.bytes() {
-                    let _ = std::fs::write(&filepath, &bytes);
-                    poster_local = Some(filepath.to_string_lossy().to_string());
+            log::info!("下载海报: {} -> {}", poster_url, filepath.display());
+            match get_client().get(poster_url).send() {
+                Ok(resp) => {
+                    if let Ok(bytes) = resp.bytes() {
+                        if bytes.len() > 1000 {
+                            let _ = std::fs::write(&filepath, &bytes);
+                            poster_local = Some(filepath.to_string_lossy().to_string());
+                            log::info!("海报下载成功: {} bytes", bytes.len());
+                        } else {
+                            log::warn!("海报图片太小({} bytes),可能不是图片", bytes.len());
+                        }
+                    }
                 }
+                Err(e) => log::warn!("海报下载失败: {}", e),
             }
         }
     }
