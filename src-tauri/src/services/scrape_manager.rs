@@ -471,7 +471,11 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
     let url = format!("https://www.jphoo1.com/prod-api/v2/search/list?pageNum=1&pageSize=5&operationName=works&keyword={}", encode(&code));
     log::info!("JpHoo API请求: {}", url);
 
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_client().get(&url)
+        .header("Referer", "https://www.jphoo1.com/")
+        .header("Accept", "application/json")
+        .header("X-Requested-With", "XMLHttpRequest")
+        .send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() {
         log::warn!("JpHoo API HTTP {}", resp.status());
         return Err(CommandError::scrape_failed(&format!("JpHoo不可用 (HTTP {})", resp.status())));
