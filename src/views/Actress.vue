@@ -13,7 +13,7 @@
       <div v-for="actress in store.actresses" :key="actress.id" class="actress-card"
           @contextmenu.prevent="onContextMenu($event, actress)">
         <div class="avatar-container" @click.stop="goDetail(actress.id)">
-          <img v-if="actress.avatar_local" :src="assetUrl(actress.avatar_local)" class="avatar-img" />
+          <img v-if="actress.avatar_local" :src="imgSrc[actress.avatar_local] || ''" class="avatar-img" />
           <div v-else class="avatar-placeholder">
             <el-icon :size="36"><UserFilled /></el-icon>
           </div>
@@ -58,7 +58,7 @@
 import { ref, onMounted, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useActressStore } from '@/stores/actress'
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, UserFilled } from '@element-plus/icons-vue'
 import type { ActressItem, ActressGroupItem } from '@/types'
@@ -82,14 +82,19 @@ const ctx = reactive({ visible: false, x: 0, y: 0, actress: null as ActressItem 
 const ctxSub = ref('')
 const actressGroups = ref<ActressGroupItem[]>([])
 
-function assetUrl(path: string) {
-  // convertFileSrc expects a valid file path, replace backslashes
-  return convertFileSrc(path.replace(/\\/g, '/'))
+// Image cache: path -> base64 data URL
+const imgSrc = reactive<Record<string, string>>({})
+async function preloadImages() {
+  for (const a of store.actresses) {
+    if (a.avatar_local && !imgSrc[a.avatar_local]) {
+      try { imgSrc[a.avatar_local] = await invoke('read_image_base64', { path: a.avatar_local.replace(/\\/g, '/') }) } catch { imgSrc[a.avatar_local] = '' }
+    }
+  }
 }
 
-function doSearch() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
-function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
-function onPageSizeChange() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+async function doSearch() { page.value = 1; await store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value); preloadImages() }
+async function onPageChange(p: number) { page.value = p; await store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value); preloadImages() }
+async function onPageSizeChange() { page.value = 1; await store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value); preloadImages() }
 
 function goDetail(id: number) { router.push(`/actress/${id}`) }
 

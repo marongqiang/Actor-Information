@@ -39,3 +39,14 @@ pub fn get_secure_config(key: String) -> Result<Option<String>, crate::utils::er
 pub fn clear_secure_config(key: String) -> Result<(), crate::utils::error::CommandError> {
     secure_config::clear_secure_config(&key)
 }
+
+/// Read a local image file and return as base64 data URL
+#[tauri::command]
+pub fn read_image_base64(path: String) -> Result<String, crate::utils::error::CommandError> {
+    let bytes = std::fs::read(&path)
+        .map_err(|e| crate::utils::error::CommandError::internal(&format!("读取图片失败: {}", e)))?;
+    let ext = std::path::Path::new(&path).extension()
+        .and_then(|e| e.to_str()).unwrap_or("jpg");
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+    Ok(format!("data:image/{};base64,{}", ext, b64))
+}
