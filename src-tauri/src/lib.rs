@@ -47,6 +47,7 @@ pub fn run() {
             commands::fs::refresh_play_url,
             commands::fs::export_list,
             // Scrape
+            commands::scrape::scrape_batch,
             commands::scrape::start_scrape,
             commands::scrape::pause_scrape,
             commands::scrape::resume_scrape,

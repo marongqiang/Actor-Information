@@ -135,9 +135,15 @@ function onSortChange(sort: any) {
 
 async function batchScrape() {
   if (!selectedRows.value.length) return
-  await invoke('batch_set_scrape_status', { fileIds: selectedRows.value.map(r => r.file_id), status: 1 })
-  ElMessage.success(`已标记 ${selectedRows.value.length} 部影片待刮削`)
-  doSearch()
+  const ids = selectedRows.value.map(r => r.file_id)
+  ElMessage.info(`开始刮削 ${ids.length} 部影片...`)
+  try {
+    const result: any = await invoke('scrape_batch', { fileIds: ids })
+    ElMessage.success(`刮削完成: ${result.success} 成功, ${result.failed} 失败`)
+    doSearch()
+  } catch(e: any) {
+    ElMessage.error('刮削失败: ' + (e?.message || e))
+  }
 }
 
 async function batchHide() {

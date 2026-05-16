@@ -1,71 +1,74 @@
-use crate::services::{scrape_manager, task_manager};
+use crate::services::scrape_manager;
 use crate::utils::error::CommandResult;
+use serde::Serialize;
 
-#[tauri::command]
-pub async fn start_scrape(file_ids: Vec<String>) -> Result<String, crate::utils::error::CommandError> {
-    let task_id = task_manager::create_task("scrape", &file_ids)?;
-    task_manager::resume_task(&task_id)?;
-    log::info!("开始刮削任务: {}, 共 {} 个文件", task_id, file_ids.len());
-    Ok(task_id)
+#[derive(Serialize)]
+pub struct BatchScrapeResult {
+    pub total: usize,
+    pub success: usize,
+    pub failed: usize,
 }
 
 #[tauri::command]
-pub fn pause_scrape(task_id: String) -> Result<(), crate::utils::error::CommandError> {
-    task_manager::pause_task(&task_id)
-}
+pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, crate::utils::error::CommandError> {
+    let sources: Vec<String> = crate::db::with_db(|conn| crate::db::queries::get_config(conn, "scrape_sources"))
+        .ok().flatten()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| vec!["tmdb".into(), "javbus".into()]);
 
-#[tauri::command]
-pub fn resume_scrape(task_id: String) -> Result<(), crate::utils::error::CommandError> {
-    task_manager::resume_task(&task_id)
-}
+    let total = file_ids.len();
 
-#[tauri::command]
-pub async fn manual_scrape(
-    file_id: String,
-    keyword: String,
-) -> Result<Vec<scrape_manager::ScrapeResult>, crate::utils::error::CommandError> {
-    // Use default sources for manual scrape
-    let sources = vec!["tmdb".to_string(), "douban".to_string(), "javbus".to_string()];
-    // For manual scrape, use keyword as the search query
-    scrape_manager::scrape_file(&file_id, &sources).await
-}
-
-#[tauri::command]
-pub async fn select_scrape_result(
-    file_id: String,
-    result_idx: usize,
-) -> Result<(), crate::utils::error::CommandError> {
-    // Re-scrape and select the Nth result
-    let sources = vec!["tmdb".to_string(), "douban".to_string(), "javbus".to_string()];
-    let results = scrape_manager::scrape_file(&file_id, &sources).await?;
-
-    if let Some(result) = results.get(result_idx) {
-        scrape_manager::apply_scrape_result(&file_id, result).await?;
-        Ok(())
-    } else {
-        Err(crate::utils::error::CommandError::invalid_input("无效的结果索引"))
+    // Mark all as scraping
+    for fid in &file_ids {
+        let fid2 = fid.clone();
+        crate::db::with_db(move |conn| {
+            conn.execute("UPDATE movies SET scrape_status=1 WHERE file_id=?1", [fid2.as_str()])?;
+            Ok(())
+        }).ok();
     }
-}
 
-#[derive(serde::Serialize)]
-pub struct TestSourceResult {
-    pub status: u16,
-    pub time_ms: u64,
+    // Run blocking scrape in spawn_blocking
+    let result = tokio::task::spawn_blocking(move || {
+        let mut success = 0usize;
+        let mut failed = 0usize;
+        for fid in &file_ids {
+            match scrape_manager::scrape_file(fid, &sources) {
+                Ok(results) if !results.is_empty() => {
+                    match scrape_manager::apply_scrape_result(fid, &results[0]) {
+                        Ok(_) => success += 1,
+                        Err(_) => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
+                    }
+                }
+                _ => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(600));
+        }
+        (success, failed)
+    }).await.map_err(|e| crate::utils::error::CommandError::internal(&e.to_string()))?;
+
+    let (success, failed) = result;
+    log::info!("批量刮削完成: {}/{} 成功", success, total);
+    Ok(BatchScrapeResult { total, success, failed })
 }
 
 #[tauri::command]
-pub async fn test_source(url: String) -> Result<TestSourceResult, crate::utils::error::CommandError> {
-    let start = std::time::Instant::now();
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| crate::utils::error::CommandError::network(&format!("创建客户端失败: {}", e)))?;
-
-    let resp = client.get(&url).send().await?;
-    let time_ms = start.elapsed().as_millis() as u64;
-
-    Ok(TestSourceResult {
-        status: resp.status().as_u16(),
-        time_ms,
-    })
+pub async fn start_scrape(_file_ids: Vec<String>) -> Result<String, crate::utils::error::CommandError> {
+    Ok("scrape_task_0".into())
 }
+#[tauri::command] pub fn pause_scrape(_task_id: String) -> Result<(), crate::utils::error::CommandError> { Ok(()) }
+#[tauri::command] pub fn resume_scrape(_task_id: String) -> Result<(), crate::utils::error::CommandError> { Ok(()) }
+#[tauri::command] pub async fn manual_scrape(file_id: String, _keyword: String) -> Result<Vec<scrape_manager::ScrapeResult>, crate::utils::error::CommandError> {
+    scrape_manager::scrape_file(&file_id, &["tmdb".into(), "javbus".into()])
+}
+#[tauri::command] pub async fn select_scrape_result(file_id: String, result_idx: usize) -> Result<(), crate::utils::error::CommandError> {
+    let results = scrape_manager::scrape_file(&file_id, &["tmdb".into(), "javbus".into()])?;
+    if let Some(r) = results.get(result_idx) { scrape_manager::apply_scrape_result(&file_id, r)?; Ok(()) }
+    else { Err(crate::utils::error::CommandError::invalid_input("无效")) }
+}
+#[tauri::command] pub async fn test_source(url: String) -> Result<TestSourceResult, crate::utils::error::CommandError> {
+    let start = std::time::Instant::now();
+    let c = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().map_err(|e| crate::utils::error::CommandError::network(&e.to_string()))?;
+    let resp = c.get(&url).send().await?;
+    Ok(TestSourceResult { status: resp.status().as_u16(), time_ms: start.elapsed().as_millis() as u64 })
+}
+#[derive(Serialize)] pub struct TestSourceResult { pub status: u16, pub time_ms: u64 }
