@@ -183,7 +183,7 @@ const page = ref(Number(route.query.page) || store.tablePage); const pageSize = 
 // Save state to store
 watch(search, (v) => { store.tableSearch = v })
 watch(showPendingOnly, (v) => { store.tableShowPending = v })
-watch(page, (v) => { store.tablePage = v; if (v > 1) $router.replace({ query: { ...route.query, page: v } }) })
+watch(page, (v) => { store.tablePage = v })
 
 // Search: simple debounce
 let searchTimer: any = null
@@ -194,11 +194,9 @@ function onSearchInput() {
 const scanning = ref(false); const selectedRows = ref<ActressItem[]>([])
 
 const filterGroupId = ref<number | undefined>()
-let firstLoad = true
 watch(() => route.query.group_id, (val) => {
   filterGroupId.value = val ? Number(val) : undefined
-  doSearch(firstLoad ? false : true) // don't reset page on initial load (restore from store)
-  firstLoad = false
+  doSearch(false) // never reset page on group change
 }, { immediate: true })
 
 // Inline editing (统一用文本输入)
