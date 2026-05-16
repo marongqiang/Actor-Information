@@ -68,14 +68,22 @@ const route = useRoute()
 const router = useRouter()
 const store = useActressStore()
 const search = ref('')
-const page = ref(1)
+const win = window as any
+const page = ref(win._actressPage || 1)
 const pageSize = ref(20)
+
+watch(page, (v) => {
+  win._actressPage = v
+  const url = new URL(window.location.href)
+  url.searchParams.set('page', String(v))
+  window.history.replaceState({}, '', url.toString())
+})
 
 // Read group_id from URL for filtering
 const filterGroupId = ref<number | undefined>()
 watch(() => route.query.group_id, (val) => {
   filterGroupId.value = val ? Number(val) : undefined
-  doSearch()
+  doSearch(false) // don't reset page
 }, { immediate: true })
 
 // Context menu
@@ -101,9 +109,9 @@ async function preloadImages() {
   imgStatus.value = `loaded:${count} noAvatar:${noAvatar} skipped:${skipped}`
 }
 
-async function doSearch() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+async function doSearch(resetPage = true) { if (resetPage) page.value = 1; store.fetchPaginated(page.value, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
-function onPageSizeChange() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
+function onPageSizeChange() { doSearch(true) }
 
 // Auto-preload images when actresses array changes
 watch(() => store.actresses, () => { preloadImages() }, { deep: false })
