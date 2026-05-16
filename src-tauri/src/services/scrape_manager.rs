@@ -90,9 +90,27 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
 
 pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResult<()> {
     let now = db::now_ts();
+
+    // Download poster if URL exists and no local cache yet
+    let mut poster_local = None;
+    if let Some(ref poster_url) = result.poster_url {
+        if poster_url.starts_with("http") {
+            let images_dir = db::get_data_dir().join("images").join("posters");
+            let _ = std::fs::create_dir_all(&images_dir);
+            let filename = format!("{}.jpg", &file_id[..file_id.len().min(16)]);
+            let filepath = images_dir.join(&filename);
+            if let Ok(resp) = get_client().get(poster_url).send() {
+                if let Ok(bytes) = resp.bytes() {
+                    let _ = std::fs::write(&filepath, &bytes);
+                    poster_local = Some(filepath.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
     db::with_db(|conn| {
-        conn.execute("UPDATE movies SET title=?1,year=?2,poster_url=?3,overview=?4,rating=?5,runtime=?6,director=?7,genre=?8,scrape_status=2,updated_at=?9 WHERE file_id=?10",
-            rusqlite::params![result.title,result.year,result.poster_url,result.overview,result.rating,result.runtime,result.director,
+        conn.execute("UPDATE movies SET title=?1,year=?2,poster_url=?3,poster_local=COALESCE(?4,poster_local),overview=?5,rating=?6,runtime=?7,director=?8,genre=?9,scrape_status=2,updated_at=?10 WHERE file_id=?11",
+            rusqlite::params![result.title,result.year,result.poster_url,poster_local,result.overview,result.rating,result.runtime,result.director,
                 result.genre.as_ref().map(|g| serde_json::to_string(g).unwrap_or_default()), now, file_id])?;
         if let Some(actors) = &result.actors {
             for name in actors {
