@@ -2,7 +2,7 @@
   <div class="actress-table-page">
     <div class="toolbar">
       <h2>演员表格</h2>
-      <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" />
+      <el-input v-model="search" placeholder="搜索..." clearable style="width: 160px" size="small" @input="onSearchInput" @clear="doSearch()" />
       <el-button-group size="small">
         <el-button :type="showPendingOnly === undefined ? 'primary' : ''" @click="showPendingOnly = undefined; doSearch()">全部</el-button>
         <el-button :type="showPendingOnly === true ? 'warning' : ''" @click="showPendingOnly = true; doSearch()">待审核</el-button>
@@ -185,13 +185,12 @@ watch(search, (v) => { store.tableSearch = v })
 watch(showPendingOnly, (v) => { store.tableShowPending = v })
 watch(page, (v) => { store.tablePage = v; if (v > 1) $router.replace({ query: { ...route.query, page: v } }) })
 
-// Search: trigger on input with debounce
+// Search: simple debounce
 let searchTimer: any = null
-watch(search, (v) => {
+function onSearchInput() {
   clearTimeout(searchTimer)
-  store.tableSearch = v
-  searchTimer = setTimeout(() => { page.value = 1; fetchData(1) }, 300)
-})
+  searchTimer = setTimeout(() => { page.value = 1; fetchData(1); searchTimer = null }, 400)
+}
 const scanning = ref(false); const selectedRows = ref<ActressItem[]>([])
 
 const filterGroupId = ref<number | undefined>()
