@@ -132,6 +132,8 @@ function assetUrl(path: string) {
 
 function doSearch() {
   currentPage.value = 1
+  // Always sync filterGroup with current URL
+  filterGroup.value = route.query.group_id ? Number(route.query.group_id) : undefined
   store.setFilters({
     keyword: searchKeyword.value || undefined,
     genre: filterGenre.value || undefined,
