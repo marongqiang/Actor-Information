@@ -77,6 +77,18 @@
         <el-option :value="100" label="100条/页" />
       </el-select>
     </div>
+
+    <!-- 刮削进度弹窗 -->
+    <el-dialog v-model="scrapeDialog" title="刮削进度" width="400px" :close-on-click-modal="false" :show-close="false">
+      <div style="text-align: center; padding: 10px;">
+        <el-progress :percentage="scrapePct" :stroke-width="12" :status="scrapeDone ? 'success' : undefined" />
+        <p style="margin-top: 12px; color: #e0e0e0;">{{ scrapeText }}</p>
+        <p v-if="scrapeDone" style="margin-top: 8px; color: #67c23a;">✓ 成功 {{ scrapeOk }} / 失败 {{ scrapeFail }}</p>
+      </div>
+      <template #footer v-if="scrapeDone">
+        <el-button @click="scrapeDialog=false; doSearch()">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -100,6 +112,14 @@ const total = ref(0)
 const selectedRows = ref<MovieItem[]>([])
 const sortProp = ref('updated_at')
 const sortOrder = ref('desc')
+
+// Scrape progress
+const scrapeDialog = ref(false)
+const scrapePct = ref(0)
+const scrapeDone = ref(false)
+const scrapeText = ref('')
+const scrapeOk = ref(0)
+const scrapeFail = ref(0)
 
 function formatSize(bytes: number) {
   if (!bytes) return '-'
@@ -136,12 +156,16 @@ function onSortChange(sort: any) {
 async function batchScrape() {
   if (!selectedRows.value.length) return
   const ids = selectedRows.value.map(r => r.file_id)
-  ElMessage.info(`开始刮削 ${ids.length} 部影片...`)
+  scrapeDialog.value = true; scrapePct.value = 0; scrapeDone.value = false
+  scrapeText.value = `正在刮削 ${ids.length} 部影片...`; scrapeOk.value = 0; scrapeFail.value = 0
   try {
     const result: any = await invoke('scrape_batch', { fileIds: ids })
-    ElMessage.success(`刮削完成: ${result.success} 成功, ${result.failed} 失败`)
+    scrapePct.value = 100; scrapeDone.value = true
+    scrapeOk.value = result.success; scrapeFail.value = result.failed
+    scrapeText.value = `刮削完成`
     doSearch()
   } catch(e: any) {
+    scrapeDialog.value = false
     ElMessage.error('刮削失败: ' + (e?.message || e))
   }
 }
