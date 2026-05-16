@@ -71,18 +71,28 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
             Ok(exists)
         })?;
 
+        // Get the first image file from the folder as avatar
+        let avatar = find_first_image(&path);
+        if avatar.is_none() { log::warn!("演员 {} 的目录未找到图片: {}", folder_name, path.display()); }
+        let now = db::now_ts();
+        let letter = first_char_upper(&folder_name);
+
         if !exists {
-            // Get the first image file from the folder as avatar
-            let avatar = find_first_image(&path);
-
-            let now = db::now_ts();
-            let letter = first_char_upper(&folder_name);
-
             db::with_db(|conn| {
                 conn.execute(
                     "INSERT INTO av_actors (name, avatar_local, local_folder_name, is_pending, source, letter, created_at)
                      VALUES (?1, ?2, ?3, 0, 'local_folder', ?4, ?5)",
                     rusqlite::params![folder_name, avatar.as_deref(), full_path, letter, now],
+                )?;
+                Ok(())
+            })?;
+            added += 1;
+        } else if avatar.is_some() {
+            // Update avatar for existing actress if found
+            db::with_db(|conn| {
+                conn.execute(
+                    "UPDATE av_actors SET avatar_local=?1, local_folder_name=?2 WHERE name=?3 AND avatar_local IS NULL",
+                    rusqlite::params![avatar.as_deref(), full_path, folder_name],
                 )?;
                 Ok(())
             })?;
