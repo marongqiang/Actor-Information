@@ -23,6 +23,7 @@ pub struct ScanResult {
 }
 
 pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<ScanResult> {
+    std::fs::write("d:/scan_debug.txt", "scan started").ok();
     log::info!("=== scan_local_actress_folder 开始 ===");
     let base_dir = match folder_path {
         Some(p) => PathBuf::from(p),
