@@ -23,6 +23,7 @@ pub struct ScanResult {
 }
 
 pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<ScanResult> {
+    log::info!("=== scan_local_actress_folder 开始 ===");
     let base_dir = match folder_path {
         Some(p) => PathBuf::from(p),
         None => get_actor_base_dir()?,
@@ -100,6 +101,7 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
         }
     }
 
+    log::info!("=== scan_local_actress_folder 完成: added={} total={} ===", added, total);
     Ok(ScanResult { added, total })
 }
 
