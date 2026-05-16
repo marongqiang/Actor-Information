@@ -484,7 +484,8 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
                 title = Some(item.text().collect::<String>().trim().to_string());
                 if poster.is_none() {
                     for img in item.select(&s_cover) {
-                        if let Some(src) = img.value().attr("src") {
+                        let src = img.value().attr("src").or_else(|| img.value().attr("data-src"));
+                        if let Some(src) = src {
                             poster = Some(src.to_string());
                             break;
                         }
@@ -502,7 +503,9 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
             if let Ok(html2) = resp.text() {
                 let doc2 = scraper::Html::parse_document(&html2);
                 for img in doc2.select(&s_cover) {
-                    if let Some(src) = img.value().attr("src") {
+                    // Check src and data-src (lazy loading)
+                    let src = img.value().attr("src").or_else(|| img.value().attr("data-src"));
+                    if let Some(src) = src {
                         if !src.contains("logo") && !src.contains("icon") {
                             poster = Some(src.to_string());
                             break;
@@ -512,6 +515,7 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
             }
         }
     }
+    log::info!("JpHoo 结果: title={} poster={:?}", title, poster);
     Ok(ScrapeResult { source: "jphoo".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: None, score: 55 })
 }
 
