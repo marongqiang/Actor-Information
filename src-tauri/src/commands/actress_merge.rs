@@ -100,8 +100,6 @@ pub fn get_actresses_paginated(
     include_pending: Option<bool>,
     group_id: Option<i64>,
 ) -> Result<PaginatedActress, crate::utils::error::CommandError> {
-    log::info!("get_actresses_paginated 参数: page={} pageSize={} search={:?} includePending={:?} groupId={:?}",
-        page, page_size, search, include_pending, group_id);
     db::with_db(|conn| {
         let mut where_parts: Vec<String> = Vec::new();
         // include_pending: None=全部, Some(true)=仅待审核, Some(false)=仅已确认
