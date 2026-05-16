@@ -468,7 +468,8 @@ fn scrape_fc2(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     // Use JpHoo's own search API (returns JSON)
-    let url = format!("https://www.jphoo1.com/prod-api/v2/search/list?pageNum=1&pageSize=5&operationName=works&keyword={}", encode(&code));
+    // Try multiple API formats
+    let url = format!("https://www.jphoo1.com/prod-api/v2/search/list?pageNum=1&pageSize=5&keyword={}", code);
     log::info!("JpHoo API请求: {}", url);
 
     let resp = get_client().get(&url)
