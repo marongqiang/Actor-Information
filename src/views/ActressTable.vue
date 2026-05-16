@@ -217,13 +217,32 @@ const dupDialog = ref(false)
 function doSearch(resetPage = true) { if (resetPage) page.value = 1; fetchData(page.value) }
 function onPageChange(p: number) { page.value = p; fetchData(p) }
 function onPageSizeChange() { page.value = 1; fetchData(1) }
-function fetchData(p: number) {
-  store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
+async function fetchData(p: number) {
+  store.loading = true
+  try {
+    const result: any = await invoke('get_actresses_paginated', {
+      page: p, pageSize: pageSize.value,
+      search: search.value || undefined,
+      includePending: showPendingOnly.value,
+      groupId: filterGroupId.value,
+    })
+    store.actresses = result.list || []
+    store.total = result.total || 0
+    fetchAliases()
+  } catch(e: any) {
+    ElMessage.error('查询失败: ' + (e?.message || e))
+  } finally { store.loading = false }
 }
 function onSelectionChange(rows: ActressItem[]) { selectedRows.value = rows }
-function onSortChange(sort: any) {
+async function onSortChange(sort: any) {
   if (sort.prop) {
-    store.fetchPaginated(page.value, pageSize.value, search.value || undefined, sort.prop, sort.order, showPendingOnly.value, filterGroupId.value).then(fetchAliases)
+    const result: any = await invoke('get_actresses_paginated', {
+      page: page.value, pageSize: pageSize.value,
+      search: search.value || undefined,
+      sortField: sort.prop, sortOrder: sort.order,
+      includePending: showPendingOnly.value, groupId: filterGroupId.value,
+    })
+    store.actresses = result.list || []; store.total = result.total || 0; fetchAliases()
   }
 }
 function clearGroupFilter() {
