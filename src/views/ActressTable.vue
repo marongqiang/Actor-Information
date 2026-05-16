@@ -183,7 +183,13 @@ const search = ref(win._atSearch || ''); const showPendingOnly = ref<boolean | u
 const page = ref(win._atPage || 1); const pageSize = ref(20)
 
 watch(search, (v) => { win._atSearch = v })
-watch(page, (v) => { win._atPage = v })
+watch(page, (v) => {
+  win._atPage = v
+  // Silently update URL so browser back restores the page
+  const url = new URL(window.location.href)
+  url.searchParams.set('page', String(v))
+  window.history.replaceState({}, '', url.toString())
+})
 
 // Search: simple debounce
 let searchTimer: any = null
