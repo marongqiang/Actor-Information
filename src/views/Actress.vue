@@ -2,6 +2,7 @@
   <div class="actress-page">
     <div class="toolbar">
       <h2>演员库</h2>
+      <span style="color:#f56c6c;font-size:12px;">imgStatus:{{ imgStatus }}|loaded:{{ imgLoaded }}</span>
       <el-input v-model="search" placeholder="搜索演员..." clearable style="width: 200px" size="small" @change="doSearch" />
       <el-button type="primary" size="small" @click="store.syncData()">同步数据</el-button>
     </div>
@@ -84,7 +85,11 @@ const actressGroups = ref<ActressGroupItem[]>([])
 
 // Image cache: path -> base64 data URL
 const imgSrc = reactive<Record<string, string>>({})
+const imgStatus = ref('init')
+const imgLoaded = ref(0)
+
 async function preloadImages() {
+  imgStatus.value = `preload:${store.actresses.length}rows`
   let count = 0; let skipped = 0; let noAvatar = 0
   for (const a of store.actresses) {
     if (!a.avatar_local) { noAvatar++; continue }
@@ -92,9 +97,8 @@ async function preloadImages() {
     try { imgSrc[a.avatar_local] = await invoke('read_image_base64', { path: a.avatar_local.replace(/\\/g, '/') }); count++ } catch { imgSrc[a.avatar_local] = '' }
   }
   // Visible feedback
-  if (count > 0) ElMessage.success(`头像已加载 ${count} 个`)
-  else if (noAvatar > 0) ElMessage.warning(`${noAvatar} 个演员无头像路径`)
-  else if (skipped > 0) ElMessage.info(`${skipped} 个已缓存`)
+  imgLoaded.value = count
+  imgStatus.value = `loaded:${count} noAvatar:${noAvatar} skipped:${skipped}`
 }
 
 async function doSearch() { page.value = 1; store.fetchPaginated(1, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
