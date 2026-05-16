@@ -17,7 +17,7 @@
 
     <div class="table-wrapper">
       <el-table :data="movies" v-loading="loading"
-        style="min-width: 1500px" max-height="calc(100vh - 190px)" border stripe resizable
+        style="min-width: 1500px" border stripe resizable
         :default-sort="{ prop: 'updated_at', order: 'descending' }"
         @selection-change="onSelectionChange"
         @sort-change="onSortChange"
