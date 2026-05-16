@@ -37,6 +37,7 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
         )));
     }
 
+    let _ = std::fs::write("d:/scan_debug.txt", format!("dir={} exists={}", base_dir.display(), base_dir.exists()));
     let mut total = 0i64;
     let mut added = 0i64;
 
@@ -103,6 +104,7 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
     }
 
     log::info!("=== scan_local_actress_folder 完成: added={} total={} ===", added, total);
+    let _ = std::fs::write("d:/scan_debug.txt", format!("done: total={} added={} entries={}", total, added, total as usize));
     Ok(ScanResult { added, total })
 }
 
