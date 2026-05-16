@@ -62,8 +62,20 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
         log::info!("刮削 {}: 开始查询 [{}]", source, query);
         let r = match source.as_str() {
             "tmdb" => scrape_tmdb(query),
+            "imdb" => scrape_imdb(query),
+            "douban" => scrape_douban(query),
             "javbus" => scrape_javbus(query),
             "javdb" => scrape_javdb(query),
+            "javlibrary" => scrape_javlib(query),
+            "fanza" => scrape_fanza(query),
+            "arzon" => scrape_arzon(query),
+            "mgstage" => scrape_mgstage(query),
+            "fc2" => scrape_fc2(query),
+            "airav" | "jav321" | "xcity" | "prestige" | "avsox" | "njav" | "getav" | "whostv" | "jphoo" | "fc2ppvdb" => {
+                // These sources require complex anti-bot handling
+                log::debug!("刮削源 {} 尚未实现(被反爬保护)", source);
+                continue;
+            }
             _ => { log::debug!("刮削源 {} 未实现", source); continue; }
         };
         match &r {
@@ -221,6 +233,206 @@ fn scrape_javdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let actors: Vec<String> = doc.select(&s_actor).filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
 
     Ok(ScrapeResult { source: "javdb".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 70 })
+}
+
+// ─── IMDb (blocking HTML parse) ───
+
+fn scrape_imdb(query: &str) -> Result<ScrapeResult, CommandError> {
+    let url = format!("https://www.imdb.com/find/?q={}", encode(query));
+    let resp = get_client().get(&url).header("Accept-Language", "en-US,en;q=0.9").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_item = scraper::Selector::parse(".ipc-metadata-list-summary-item__t a").unwrap();
+    let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
+    if detail_url.is_none() { return Err(CommandError::scrape_failed("IMDb无结果")); }
+    let detail_url = format!("https://www.imdb.com{}", detail_url.unwrap());
+    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_title = scraper::Selector::parse("h1").unwrap();
+    let s_year = scraper::Selector::parse(".sc-afe43def-1 a.ipc-inline-list__item").unwrap();
+    let s_rating = scraper::Selector::parse(".sc-bde20123-1 span").unwrap();
+    let s_poster = scraper::Selector::parse(".ipc-media img").unwrap();
+    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let year = doc.select(&s_year).next().and_then(|e| e.text().collect::<String>().trim().parse().ok());
+    let rating = doc.select(&s_rating).next().and_then(|e| e.text().collect::<String>().trim().parse().ok());
+    let poster = doc.select(&s_poster).next().and_then(|e| e.value().attr("src").map(|s| s.to_string()));
+    Ok(ScrapeResult { source: "imdb".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating, runtime: None, director: None, genre: None, actors: None, score: 75 })
+}
+
+// ─── Douban (blocking HTML parse) ───
+
+fn scrape_douban(query: &str) -> Result<ScrapeResult, CommandError> {
+    let url = format!("https://movie.douban.com/subject_search?search_text={}", encode(query));
+    let resp = get_client().get(&url).header("Accept-Language", "zh-CN,zh;q=0.9").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() { return Err(CommandError::scrape_failed("豆瓣不可用")); }
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_item = scraper::Selector::parse(".item-root a.cover-link").unwrap();
+    let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
+    if detail_url.is_none() { return Err(CommandError::scrape_failed("豆瓣无结果")); }
+    let detail_url = format!("https://movie.douban.com{}", detail_url.unwrap().split('?').next().unwrap_or(""));
+    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_title = scraper::Selector::parse("h1 span").unwrap();
+    let s_year = scraper::Selector::parse(".year").unwrap();
+    let s_rating = scraper::Selector::parse(".rating_num").unwrap();
+    let s_poster = scraper::Selector::parse("#mainpic img").unwrap();
+    let s_overview = scraper::Selector::parse("#link-report span[property='v:summary']").unwrap();
+    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let year = doc.select(&s_year).next().and_then(|e| e.text().collect::<String>().trim().replace(['(', ')'], "").parse().ok());
+    let rating = doc.select(&s_rating).next().and_then(|e| e.text().collect::<String>().trim().parse().ok());
+    let poster = doc.select(&s_poster).next().and_then(|e| e.value().attr("src").map(|s| s.to_string()));
+    let overview = doc.select(&s_overview).next().map(|e| e.text().collect::<String>().trim().to_string());
+    Ok(ScrapeResult { source: "douban".into(), title, year, poster_url: poster, backdrop_url: None, overview, rating, runtime: None, director: None, genre: None, actors: None, score: 70 })
+}
+
+// ─── JavLibrary (blocking HTML parse) ───
+
+fn scrape_javlib(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.javlibrary.com/en/vl_searchbyid.php?keyword={}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() { return Err(CommandError::scrape_failed("JavLibrary不可用")); }
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_item = scraper::Selector::parse(".video a").unwrap();
+    let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
+    if detail_url.is_none() { return Err(CommandError::scrape_failed("JavLibrary无结果")); }
+    let detail_url = format!("https://www.javlibrary.com{}", detail_url.unwrap().trim_start_matches('.'));
+    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_title = scraper::Selector::parse("h3.post-title").unwrap();
+    let s_cover = scraper::Selector::parse("#video_jacket_img").unwrap();
+    let s_info = scraper::Selector::parse("#video_info .item").unwrap();
+    let s_actor = scraper::Selector::parse(".cast a").unwrap();
+    let s_genre = scraper::Selector::parse(".genre a").unwrap();
+    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&s_cover).next().and_then(|e| e.value().attr("src").map(|s| s.to_string()));
+    let mut year = None; let mut director = None; let mut runtime = None;
+    for item in doc.select(&s_info) {
+        let t = item.text().collect::<String>();
+        if t.contains("Release Date:") { year = t.split("Release Date:").nth(1).and_then(|d| d.trim().split('/').next().and_then(|y| y.trim().parse().ok())); }
+        if t.contains("Director:") { director = t.split("Director:").nth(1).map(|s| s.trim().to_string()); }
+        if t.contains("Length:") { runtime = t.split("Length:").nth(1).and_then(|s| s.trim().split_whitespace().next().and_then(|n| n.parse().ok())); }
+    }
+    let actors: Vec<String> = doc.select(&s_actor).filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let genres: Vec<String> = doc.select(&s_genre).filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    Ok(ScrapeResult { source: "javlibrary".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 70 })
+}
+
+// ─── Fanza/DMM (blocking HTML parse) ───
+
+fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.dmm.co.jp/mono/dvd/-/search/=/searchstr={}", encode(&code));
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() { return Err(CommandError::scrape_failed("Fanza不可用")); }
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_item = scraper::Selector::parse(".tmb a").unwrap();
+    let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
+    if detail_url.is_none() { return Err(CommandError::scrape_failed("Fanza无结果")); }
+    let detail_url = detail_url.unwrap().to_string();
+    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_title = scraper::Selector::parse("h1#title").unwrap();
+    let s_cover = scraper::Selector::parse("#sample-image1 img").unwrap();
+    let s_actor = scraper::Selector::parse("#performer a").unwrap();
+    let s_genre = scraper::Selector::parse(".genreTag a").unwrap();
+    let s_info = scraper::Selector::parse("table.mg-b20 tr").unwrap();
+    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&s_cover).next().and_then(|e| e.value().attr("src").map(|s| s.to_string()));
+    let mut year = None; let mut runtime = None;
+    for tr in doc.select(&s_info) {
+        let t = tr.text().collect::<String>();
+        if t.contains("発売日") || t.contains("配信開始日") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
+        if t.contains("収録時間") { runtime = t.split_whitespace().last().and_then(|s| s.trim().replace("min", "").parse().ok()); }
+    }
+    let actors: Vec<String> = doc.select(&s_actor).filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let genres: Vec<String> = doc.select(&s_genre).filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    Ok(ScrapeResult { source: "fanza".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 65 })
+}
+
+// ─── Arzon (blocking HTML parse) ───
+
+fn scrape_arzon(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.arzon.jp/itemlist.html?q={}", encode(&code));
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() { return Err(CommandError::scrape_failed("Arzon不可用")); }
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_item = scraper::Selector::parse(".item img").unwrap();
+    let detail = doc.select(&s_item).next().and_then(|e| e.value().attr("alt").map(|s| s.to_string()));
+    if detail.is_none() { return Err(CommandError::scrape_failed("Arzon无结果")); }
+    let title = detail.unwrap();
+    let s_cover = scraper::Selector::parse(".item img").unwrap();
+    let poster = doc.select(&s_cover).next().and_then(|e| e.value().attr("src").map(|s| format!("https:{}", s)));
+    Ok(ScrapeResult { source: "arzon".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: None, score: 50 })
+}
+
+// ─── MGStage (blocking HTML parse) ───
+
+fn scrape_mgstage(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.mgstage.com/search/cSearch.php?search_word={}", encode(&code));
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() { return Err(CommandError::scrape_failed("MGStage不可用")); }
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_item = scraper::Selector::parse(".search_list h2 a").unwrap();
+    let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
+    if detail_url.is_none() { return Err(CommandError::scrape_failed("MGStage无结果")); }
+    let detail_url = detail_url.unwrap().to_string();
+    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_title = scraper::Selector::parse("h1.tag").unwrap();
+    let s_cover = scraper::Selector::parse("#EnlargeImage").unwrap();
+    let s_actor = scraper::Selector::parse(".detail_data a[href*='actress']").unwrap();
+    let s_genre = scraper::Selector::parse(".detail_data a[href*='genre']").unwrap();
+    let s_info = scraper::Selector::parse(".detail_data tr").unwrap();
+    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&s_cover).next().and_then(|e| e.value().attr("href").map(|s| s.to_string()));
+    let mut year = None; let mut runtime = None;
+    for tr in doc.select(&s_info) {
+        let t = tr.text().collect::<String>();
+        if t.contains("発売日") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
+        if t.contains("収録時間") { runtime = t.split_whitespace().last().and_then(|s| s.replace("分", "").trim().parse().ok()); }
+    }
+    let actors: Vec<String> = doc.select(&s_actor).filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let genres: Vec<String> = doc.select(&s_genre).filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    Ok(ScrapeResult { source: "mgstage".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 60 })
+}
+
+// ─── FC2 (blocking HTML parse) ───
+
+fn scrape_fc2(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.to_uppercase().replace(['-', '_', ' '], "");
+    // FC2 uses numeric IDs
+    if !code.chars().all(|c| c.is_ascii_digit()) {
+        return Err(CommandError::scrape_failed("FC2需要纯数字ID"));
+    }
+    let url = format!("https://adult.contents.fc2.com/article/{}/", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    if !resp.status().is_success() { return Err(CommandError::scrape_failed("FC2未找到")); }
+    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&html);
+    let s_title = scraper::Selector::parse("h3.items_article_headerInfo_title").unwrap();
+    let s_cover = scraper::Selector::parse(".items_article_Left img").unwrap();
+    let s_info = scraper::Selector::parse(".items_article_Info tr").unwrap();
+    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&s_cover).next().and_then(|e| e.value().attr("src").map(|s| s.to_string()));
+    let mut year = None;
+    for tr in doc.select(&s_info) {
+        let t = tr.text().collect::<String>();
+        if t.contains("販売開始日") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
+    }
+    Ok(ScrapeResult { source: "fc2".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: None, score: 55 })
 }
 
 fn encode(s: &str) -> String {
