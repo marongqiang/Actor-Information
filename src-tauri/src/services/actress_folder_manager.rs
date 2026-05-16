@@ -23,7 +23,6 @@ pub struct ScanResult {
 }
 
 pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<ScanResult> {
-    std::fs::write("d:/scan_debug.txt", "scan started").ok();
     log::info!("=== scan_local_actress_folder 开始 ===");
     let base_dir = match folder_path {
         Some(p) => PathBuf::from(p),
@@ -37,7 +36,6 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
         )));
     }
 
-    let _ = std::fs::write(std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())).unwrap_or_else(|| std::path::PathBuf::from(".")).join("scan_start.txt"), format!("dir={} exists={}", base_dir.display(), base_dir.exists()));
     let mut total = 0i64;
     let mut added = 0i64;
     let mut with_avatar = 0i64;
@@ -107,8 +105,6 @@ pub fn scan_local_actress_folder(folder_path: Option<String>) -> CommandResult<S
     }
 
     log::info!("=== scan_local_actress_folder 完成: added={} total={} with_avatar={} ===", added, total, with_avatar);
-    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf())).unwrap_or_else(|| std::path::PathBuf::from("."));
-    let _ = std::fs::write(exe_dir.join("scan_result.txt"), format!("done: total={} added={}", total, added));
     Ok(ScanResult { added, total })
 }
 

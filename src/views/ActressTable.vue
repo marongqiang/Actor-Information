@@ -8,7 +8,6 @@
         <el-button :type="showPendingOnly === true ? 'warning' : ''" @click="showPendingOnly = true; doSearch()">待审核</el-button>
         <el-button :type="showPendingOnly === false ? 'success' : ''" @click="showPendingOnly = false; doSearch()">已确认</el-button>
       </el-button-group>
-      <span style="color:#f56c6c;font-size:11px;">DEBUG: search="{{ search }}" page={{ page }} total={{ store.total }}</span>
       <el-button type="success" size="small" @click="scanFolder" :loading="scanning">扫描本地</el-button>
       <el-button size="small" @click="detectDup">检测重复</el-button>
       <el-button size="small" type="danger" @click="deleteAll">全部删除</el-button>

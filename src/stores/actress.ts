@@ -32,8 +32,7 @@ export const useActressStore = defineStore('actress', {
         })
         this.actresses = result.list || []
         this.total = result.total || 0
-      } catch(e: any) {
-        console.error('fetchPaginated ERROR:', String(e?.message || e))
+      } catch(_e: any) {
       } finally {
         this.loading = false
       }

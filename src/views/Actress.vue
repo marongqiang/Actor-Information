@@ -2,7 +2,6 @@
   <div class="actress-page">
     <div class="toolbar">
       <h2>演员库</h2>
-      <span style="color:#f56c6c;font-size:12px;">imgStatus:{{ imgStatus }}|loaded:{{ imgLoaded }}</span>
       <el-input v-model="search" placeholder="搜索演员..." clearable style="width: 200px" size="small" @change="doSearch" />
       <el-button type="primary" size="small" @click="store.syncData()">同步数据</el-button>
     </div>
@@ -93,20 +92,13 @@ const actressGroups = ref<ActressGroupItem[]>([])
 
 // Image cache: path -> base64 data URL
 const imgSrc = reactive<Record<string, string>>({})
-const imgStatus = ref('init')
-const imgLoaded = ref(0)
 
 async function preloadImages() {
-  imgStatus.value = `preload:${store.actresses.length}rows`
-  let count = 0; let skipped = 0; let noAvatar = 0
   for (const a of store.actresses) {
-    if (!a.avatar_local) { noAvatar++; continue }
-    if (imgSrc[a.avatar_local]) { skipped++; continue }
-    try { imgSrc[a.avatar_local] = await invoke('read_image_base64', { path: a.avatar_local.replace(/\\/g, '/') }); count++ } catch { imgSrc[a.avatar_local] = '' }
+    if (a.avatar_local && !imgSrc[a.avatar_local]) {
+      try { imgSrc[a.avatar_local] = await invoke('read_image_base64', { path: a.avatar_local.replace(/\\/g, '/') }) } catch { imgSrc[a.avatar_local] = '' }
+    }
   }
-  // Visible feedback
-  imgLoaded.value = count
-  imgStatus.value = `loaded:${count} noAvatar:${noAvatar} skipped:${skipped}`
 }
 
 async function doSearch(resetPage = true) { if (resetPage) page.value = 1; store.fetchPaginated(page.value, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
