@@ -24,6 +24,7 @@ pub struct MovieItem {
     pub is_hidden: bool,
     pub progress: Option<i64>,
     pub duration: Option<i64>,
+    pub scrape_status: i32,
 }
 
 #[derive(Serialize)]
@@ -59,6 +60,7 @@ pub fn get_movies(
             poster_local: r.poster_local, rating: r.rating,
             genre: parse_genre(&r.genre), is_hidden: r.is_hidden,
             progress: Some(r.progress), duration: Some(r.duration),
+            scrape_status: r.scrape_status,
         }).collect();
 
         Ok(MoviesResponse { movies, total })
@@ -164,6 +166,17 @@ pub fn batch_action(
             }
             _ => return Err(CommandError::invalid_input("未知操作")),
         }
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn batch_set_scrape_status(file_ids: Vec<String>, status: i32) -> Result<(), CommandError> {
+    db::with_db(|conn| {
+        for fid in &file_ids {
+            conn.execute("UPDATE movies SET scrape_status = ?1 WHERE file_id = ?2", rusqlite::params![status, fid])?;
+        }
+        log::info!("批量更新刮削状态: {} 个文件 -> {}", file_ids.len(), status);
         Ok(())
     })
 }

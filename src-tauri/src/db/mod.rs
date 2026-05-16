@@ -42,6 +42,7 @@ fn run_migrations(conn: &Connection) {
         ("v2", include_str!("migrations/v2.sql")),
         ("v3", include_str!("migrations/v3.sql")),
         ("v4", include_str!("migrations/v4.sql")),
+        ("v5", include_str!("migrations/v5.sql")),
     ];
 
     conn.execute(
@@ -82,7 +83,7 @@ fn seed_config(conn: &Connection) {
         .as_secs() as i64;
 
     let defaults = vec![
-        ("db_version", "4"),
+        ("db_version", "5"),
         ("scan_depth", "5"),
         ("cache_max_size", "2147483648"),
         ("theme", "dark"),

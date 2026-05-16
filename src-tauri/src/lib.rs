@@ -59,6 +59,7 @@ pub fn run() {
             commands::library::batch_action,
             commands::library::hide_movies,
             commands::library::unhide_movies,
+            commands::library::batch_set_scrape_status,
             // Groups
             commands::groups::get_groups,
             commands::groups::clean_all_groups,

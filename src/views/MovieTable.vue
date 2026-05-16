@@ -9,6 +9,7 @@
       </el-button-group>
       <span v-if="selectedRows.length" class="batch-actions">
         已选 {{ selectedRows.length }} 项
+        <el-button size="small" type="primary" @click="batchScrape">刮削</el-button>
         <el-button size="small" type="danger" @click="batchHide">隐藏</el-button>
         <el-button size="small" @click="batchUnhide">取消隐藏</el-button>
       </span>
@@ -51,6 +52,13 @@
         </el-table-column>
         <el-table-column prop="group_names" label="所属分组" width="180" show-overflow-tooltip>
           <template #default="{ row }">{{ (row.group_names || []).join(', ') || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="scrape_status" label="刮削" width="80" sortable="custom">
+          <template #default="{ row }">
+            <el-tag :type="['info','warning','success','danger'][row.scrape_status||0]" size="small">
+              {{ ['未刮削','刮削中','已刮削','失败'][row.scrape_status||0] }}
+            </el-tag>
+          </template>
         </el-table-column>
         <el-table-column prop="is_hidden" label="隐藏" width="70" sortable="custom">
           <template #default="{ row }">
@@ -123,6 +131,13 @@ function onSelectionChange(rows: MovieItem[]) { selectedRows.value = rows }
 
 function onSortChange(sort: any) {
   if (sort.prop) { sortProp.value = sort.prop; sortOrder.value = sort.order || 'asc'; fetchData() }
+}
+
+async function batchScrape() {
+  if (!selectedRows.value.length) return
+  await invoke('batch_set_scrape_status', { fileIds: selectedRows.value.map(r => r.file_id), status: 1 })
+  ElMessage.success(`已标记 ${selectedRows.value.length} 部影片待刮削`)
+  doSearch()
 }
 
 async function batchHide() {

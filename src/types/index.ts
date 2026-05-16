@@ -19,6 +19,7 @@ export interface MovieItem {
   duration?: number;
   group_names?: string[];
   is_favorite?: boolean;
+  scrape_status?: number;
 }
 
 export interface MovieDetail extends MovieItem {
