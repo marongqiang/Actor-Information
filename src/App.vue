@@ -9,13 +9,13 @@
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/' }"
               @contextmenu.prevent="openGroupMenu($event, 'poster')">
-              <el-icon><PictureFilled /></el-icon><span @click.stop="$router.push({path:'/',query:{}})">海报墙</span>
+              <el-icon><PictureFilled /></el-icon><span @click.stop="navTo('/')">海报墙</span>
               <el-icon class="arrow" :class="{ open: expanded.poster }" @click.stop="expanded.poster = !expanded.poster"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.poster">
               <div v-for="g in posterGroups" :key="'pg_'+g.id" class="nav-sub-item"
                 :class="{ active: currentRoute === '/' && route.query.group_id == String(g.id) }"
-                @click.stop="$router.push(`/?group_id=${g.id}`)"
+                @click.stop="navTo('/', {group_id: g.id})"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'poster', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
@@ -23,13 +23,13 @@
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/favorites' }"
               @contextmenu.prevent="openGroupMenu($event, 'favorite')">
-              <el-icon><StarFilled /></el-icon><span @click.stop="$router.push({path:'/favorites',query:{}})">收藏影片</span>
+              <el-icon><StarFilled /></el-icon><span @click.stop="navTo('/favorites')">收藏影片</span>
               <el-icon class="arrow" :class="{ open: expanded.favorites }" @click.stop="expanded.favorites = !expanded.favorites"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.favorites">
               <div v-for="g in favGroups" :key="'fg_'+g.id" class="nav-sub-item"
                 :class="{ active: currentRoute === '/favorites' && route.query.group_id == String(g.id) }"
-                @click.stop="$router.push(`/favorites?group_id=${g.id}`)"
+                @click.stop="navTo('/favorites', {group_id: g.id})"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'favorite', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.movie_count || 0 }}</span></div>
             </template>
           </div>
@@ -37,13 +37,13 @@
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/actress' }"
               @contextmenu.prevent="openGroupMenu($event, 'actress')">
-              <el-icon><UserFilled /></el-icon><span @click.stop="$router.push({path:'/actress',query:{}})">演员库</span>
+              <el-icon><UserFilled /></el-icon><span @click.stop="navTo('/actress')">演员库</span>
               <el-icon class="arrow" :class="{ open: expanded.actress }" @click.stop="expanded.actress = !expanded.actress"><ArrowRight /></el-icon>
             </div>
             <template v-if="expanded.actress">
               <div v-for="g in actressGroups" :key="'ag_'+g.id" class="nav-sub-item"
                 :class="{ active: currentRoute === '/actress' && route.query.group_id == String(g.id) }"
-                @click.stop="$router.push(`/actress?group_id=${g.id}`)"
+                @click.stop="navTo('/actress', {group_id: g.id})"
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'actress', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.member_count || 0 }}</span></div>
             </template>
           </div>
@@ -121,6 +121,10 @@ const groupFormDialog = ref(false); const groupFormTitle = ref(''); const groupF
 let groupFormMode: 'add' | 'rename' | 'delete' = 'add'; let editingGroupId: number | null = null
 
 const $router = useRouter()
+
+function navTo(path: string, query?: Record<string, any>) {
+  $router.push({ path, query: query || {} })
+}
 
 function openGroupMenu(e: MouseEvent, type: GroupCtx) {
   e.preventDefault(); ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.type = type; ctx.groupId = null; ctx.groupName = ''
