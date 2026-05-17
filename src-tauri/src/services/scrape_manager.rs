@@ -468,13 +468,23 @@ fn scrape_fc2(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     // Use JpHoo's own search API (returns JSON)
-    let url = format!("https://www.jphoo1.com/prod-api/v2/search/list?pageNum=1&pageSize=24&operationName=works&keyword={}", code);
-    log::info!("JpHoo API请求: {}", url);
+    // First visit homepage to get guest cookie
+    let _ = get_client().get("https://www.jphoo1.com/").send();
 
+    let url = format!("https://www.jphoo1.com/prod-api/v2/search/list?pageNum=1&pageSize=24&operationName=works&keyword={}", code);
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string();
+    let nonce = rand::random::<u64>().to_string();
+    let guest_id = format!("guest-{}", uuid::Uuid::new_v4());
+
+    log::info!("JpHoo API请求: {}", url);
     let resp = get_client().get(&url)
-        .header("Referer", "https://www.jphoo1.com/")
+        .header("Referer", format!("https://www.jphoo1.com/search/works/{}", code))
         .header("Accept", "application/json")
-        .header("X-Requested-With", "XMLHttpRequest")
+        .header("guestid", &guest_id)
+        .header("istoken", "true")
+        .header("loading", "true")
+        .header("nonce", &nonce)
+        .header("timestamp", &ts)
         .send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() {
         log::warn!("JpHoo API HTTP {}", resp.status());
