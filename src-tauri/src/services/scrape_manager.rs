@@ -476,16 +476,22 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
     let nonce = rand::random::<u64>().to_string();
     let guest_id = format!("guest-{}", uuid::Uuid::new_v4());
 
+    // Read user-configured tokens from config
+    let secret = db::with_db(|c| crate::db::queries::get_config(c, "jphoo_secret")).ok().flatten().unwrap_or_default();
+    let refreshtoken = db::with_db(|c| crate::db::queries::get_config(c, "jphoo_refreshtoken")).ok().flatten().unwrap_or_default();
+
     log::info!("JpHoo API请求: {}", url);
-    let resp = get_client().get(&url)
+    let mut req = get_client().get(&url)
         .header("Referer", format!("https://www.jphoo1.com/search/works/{}", code))
         .header("Accept", "application/json")
         .header("guestid", &guest_id)
         .header("istoken", "true")
         .header("loading", "true")
         .header("nonce", &nonce)
-        .header("timestamp", &ts)
-        .send().map_err(|e| CommandError::network(&e.to_string()))?;
+        .header("timestamp", &ts);
+    if !secret.is_empty() { req = req.header("secret", &secret); }
+    if !refreshtoken.is_empty() { req = req.header("refreshtoken", &refreshtoken); }
+    let resp = req.send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() {
         log::warn!("JpHoo API HTTP {}", resp.status());
         return Err(CommandError::scrape_failed(&format!("JpHoo不可用 (HTTP {})", resp.status())));

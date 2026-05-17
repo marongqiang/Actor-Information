@@ -19,9 +19,15 @@
               <el-table-column label="已实现" width="70">
                 <template #default="{ row }"><el-tag :type="row.done ? 'success' : 'info'" size="small">{{ row.done ? '是' : '否' }}</el-tag></template>
               </el-table-column>
-              <el-table-column label="API Key" width="200" v-if="hasApiKey">
+              <el-table-column label="Token/Key" width="200">
                 <template #default="{ row }">
-                  <el-input v-if="row.key === 'tmdb'" v-model="tmdbApiKey" type="password" show-password size="small" placeholder="TMDB API Key" />
+                  <template v-if="row.key === 'tmdb'">
+                    <el-input v-model="tmdbApiKey" type="password" show-password size="small" placeholder="TMDB API Key" />
+                  </template>
+                  <template v-else-if="row.key === 'jphoo'">
+                    <el-input v-model="jphooSecret" type="password" show-password size="small" placeholder="secret" style="margin-bottom:2px;" />
+                    <el-input v-model="jphooRefresh" size="small" placeholder="refreshtoken" />
+                  </template>
                   <span v-else style="color:#666;font-size:11px;">无需</span>
                 </template>
               </el-table-column>
@@ -220,8 +226,8 @@ const cookieLoading = ref(false)
 const scrapeSources = ref<string[]>([])
 const videoExts = ref('')
 const tmdbApiKey = ref('')
-
-const hasApiKey = computed(() => scrapeSources.value.includes('tmdb'))
+const jphooSecret = ref('')
+const jphooRefresh = ref('')
 
 const sourceTable = [
   { key: 'tmdb', name: 'TMDB', site: 'api.themoviedb.org', type: '通用', done: true },
@@ -346,6 +352,8 @@ async function saveScrapeSettings() {
   await invoke('set_config', { key: 'scrape_sources', value: JSON.stringify(scrapeSources.value) })
   await invoke('set_config', { key: 'video_extensions', value: JSON.stringify(videoExts.value.split(',').map(s => s.trim()).filter(Boolean)) })
   if (tmdbApiKey.value) await invoke('set_secure_config', { key: 'tmdb_api_key', value: tmdbApiKey.value })
+  if (jphooSecret.value) await invoke('set_config', { key: 'jphoo_secret', value: jphooSecret.value })
+  if (jphooRefresh.value) await invoke('set_config', { key: 'jphoo_refreshtoken', value: jphooRefresh.value })
   ElMessage.success('刮削设置已保存')
 }
 
@@ -430,6 +438,9 @@ onMounted(async () => {
     mergeAutoFolders.value = ((await invoke('get_config', { key: 'actor_merge_auto_merge_folders' }) as string) || '1') === '1'
     mergeFilePattern.value = (await invoke('get_config', { key: 'actor_merge_file_naming_pattern' }) as string) || '{name}_{index}{ext}'
     mergeDryRun.value = ((await invoke('get_config', { key: 'actor_merge_dry_run' }) as string) || '1') === '1'
+
+    jphooSecret.value = (await invoke('get_config', { key: 'jphoo_secret' }) as string) || ''
+    jphooRefresh.value = (await invoke('get_config', { key: 'jphoo_refreshtoken' }) as string) || ''
   } catch { /* config may not exist yet */ }
 })
 </script>
