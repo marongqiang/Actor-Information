@@ -150,7 +150,93 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
             }
         }
         Ok(())
-    })
+    })?;
+
+    // Auto-translate if we got an original_title and no chinese_name yet
+    if !result.title.is_empty() {
+        auto_translate_title(file_id, &result.title);
+    }
+
+    Ok(())
+}
+
+/// Auto-translate original_title to chinese_name after scraping
+fn auto_translate_title(file_id: &str, original_title: &str) {
+    if original_title.is_empty() { return; }
+    // Check if already has chinese_name
+    let has_cn: bool = db::with_db(|conn| {
+        Ok(conn.query_row(
+            "SELECT chinese_name IS NOT NULL FROM movies WHERE file_id=?1",
+            [file_id],
+            |r| r.get(0),
+        ).unwrap_or(false))
+    }).unwrap_or(false);
+    if has_cn { return; }
+
+    log::info!("自动翻译片名: {} -> {}", file_id, original_title);
+    // Try DeepSeek first, then Google
+    let deepseek_key = crate::services::secure_config::get_secure_config("deepseek_api_key")
+        .ok().flatten().unwrap_or_default();
+    let cn = if !deepseek_key.is_empty() {
+        translate_via_deepseek(original_title, &deepseek_key)
+    } else {
+        None
+    }.or_else(|| translate_via_google(original_title));
+
+    if let Some(cn) = cn {
+        if !cn.is_empty() && cn != original_title {
+            let _ = db::with_db(|conn| {
+                conn.execute("UPDATE movies SET chinese_name=?1 WHERE file_id=?2",
+                    rusqlite::params![cn, file_id])?;
+                Ok(())
+            });
+            log::info!("自动翻译完成: {} -> {}", original_title, cn);
+        }
+    }
+}
+
+fn translate_via_deepseek(text: &str, api_key: &str) -> Option<String> {
+    let client = reqwest::blocking::Client::new();
+    let body = serde_json::json!({
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "你是日本AV影片片名翻译助手。将输入的日文/英文AV片名翻译成简体中文。注意：这是成人影片标题，直接给出中文译名，不要任何解释。"},
+            {"role": "user", "content": text}
+        ],
+        "max_tokens": 100,
+        "temperature": 0.3
+    });
+    match client.post("https://api.deepseek.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+    {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>() {
+                json["choices"][0]["message"]["content"].as_str().map(|s| s.trim().to_string())
+            } else { None }
+        }
+        Err(e) => { log::warn!("DeepSeek翻译失败: {}", e); None }
+    }
+}
+
+fn translate_via_google(text: &str) -> Option<String> {
+    let url = format!(
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q={}",
+        encode(text)
+    );
+    match reqwest::blocking::get(&url) {
+        Ok(resp) => {
+            if let Ok(body) = resp.text() {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                    json[0][0][0].as_str().map(|s| s.to_string())
+                } else { None }
+            } else { None }
+        }
+        Err(e) => { log::warn!("Google翻译失败: {}", e); None }
+    }
 }
 
 // ─── TMDB (blocking HTTP) ───

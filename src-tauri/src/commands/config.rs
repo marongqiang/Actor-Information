@@ -85,7 +85,7 @@ pub fn translate_text(text: String) -> Result<String, crate::utils::error::Comma
         let body = serde_json::json!({
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "你是一个翻译助手。将用户输入的日文/英文片名翻译成简体中文。只返回翻译结果，不要任何解释。"},
+                {"role": "system", "content": "你是一个日本AV影片片名翻译助手。用户输入的是日本AV的番号或片名，请将其翻译成简体中文。注意：这是成人影片标题，请直接给出中文译名，不要任何解释、评价或额外文字。"},
                 {"role": "user", "content": text}
             ],
             "max_tokens": 100,
