@@ -1,5 +1,8 @@
 use std::process::{Child, Command};
 use std::sync::Mutex;
+use std::os::windows::process::CommandExt;
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 static SERVER: Mutex<Option<Child>> = Mutex::new(None);
 const DEFAULT_PORT: u16 = 9588;
@@ -40,6 +43,7 @@ pub fn start_server() -> Result<(), String> {
     let child = Command::new(path)
         .arg("--port")
         .arg(DEFAULT_PORT.to_string())
+        .creation_flags(CREATE_NO_WINDOW)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
