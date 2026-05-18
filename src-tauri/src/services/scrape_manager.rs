@@ -105,9 +105,13 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             }
             Err(e) => {
                 log::warn!("刮削 {}: 失败 - {}", source, e);
-                // MetaTube returned a clear answer (not found / network error that's not a crash)
-                // Skip remaining sources — they won't have better results
-                if source.as_str() == "metatube" { metatube_done = true; }
+                // Only skip other sources if MetaTube EXPLICITLY confirmed no results (404)
+                // Network errors / server down → fall back to other sources
+                let msg = format!("{}", e);
+                if source.as_str() == "metatube" && msg.contains("无结果") {
+                    metatube_done = true;
+                    log::info!("MetaTube确认无结果，跳过其余源");
+                }
             },
         }
     }
