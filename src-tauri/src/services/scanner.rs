@@ -55,13 +55,19 @@ pub async fn scan_directory(
     }
     let total = all_files.len() as i64;
 
-    // For "full" mode: delete ALL existing records first, then re-add everything
+    // For "full" mode: delete ALL existing records AND poster files, then re-add
     if mode == "full" {
         let deleted_count = db::with_db(|conn| {
             conn.execute("DELETE FROM movies", [])?;
             Ok(conn.changes() as i64) as CommandResult<i64>
         })?;
         log::info!("全量扫描: 已清空 {} 部旧影片记录", deleted_count);
+        // Also clear poster images
+        let posters_dir = crate::db::get_data_dir().join("images").join("posters");
+        if posters_dir.exists() {
+            let _ = std::fs::remove_dir_all(&posters_dir);
+            log::info!("全量扫描: 已清除海报文件夹 {}", posters_dir.display());
+        }
     }
 
     let mut new_count = 0i64;

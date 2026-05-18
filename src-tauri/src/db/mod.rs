@@ -31,9 +31,12 @@ fn get_db_path() -> PathBuf {
 }
 
 pub fn get_data_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("smart-media-vault")
+    // Use exe directory so data stays with the app, not in AppData
+    std::env::current_exe()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("data")
 }
 
 fn run_migrations(conn: &Connection) {
