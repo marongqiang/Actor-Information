@@ -33,7 +33,8 @@ fn build_scrape_client() -> reqwest::blocking::Client {
                     .ok().flatten().and_then(|p| p.parse().ok()).unwrap_or(1080);
                 let proxy_url = format!("http://{}:{}", host, port);
                 if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
-                    builder = builder.proxy(proxy).no_proxy();
+                    let proxy = proxy.no_proxy(reqwest::NoProxy::from_string("localhost,127.0.0.1,::1"));
+                    builder = builder.proxy(proxy);
                     log::info!("刮削使用代理: {} (本地地址直连)", proxy_url);
                 }
             }
