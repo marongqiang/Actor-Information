@@ -107,6 +107,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { MovieItem } from '@/types'
 
@@ -182,6 +183,16 @@ async function batchScrape() {
   const ids = selectedRows.value.map(r => r.file_id)
   scrapeDialog.value = true; scrapePct.value = 0; scrapeDone.value = false
   scrapeText.value = `正在刮削 ${ids.length} 部影片...`; scrapeOk.value = 0; scrapeFail.value = 0
+
+  // Listen for progress events
+  const unlisten = await listen<any>('scrape-progress', (event) => {
+    const p = event.payload
+    scrapePct.value = Math.round(p.current / p.total * 100)
+    scrapeOk.value = p.success
+    scrapeFail.value = p.failed
+    scrapeText.value = `[${p.current}/${p.total}] ${p.file_name}`
+  })
+
   try {
     const result: any = await invoke('scrape_batch', { fileIds: ids })
     scrapePct.value = 100; scrapeDone.value = true
@@ -191,6 +202,8 @@ async function batchScrape() {
   } catch(e: any) {
     scrapeDialog.value = false
     ElMessage.error('刮削失败: ' + (e?.message || e))
+  } finally {
+    unlisten()
   }
 }
 
