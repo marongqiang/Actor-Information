@@ -200,6 +200,17 @@
             <el-button type="primary" @click="saveActorSettings">保存演员设置</el-button>
           </el-form-item>
         </el-form>
+
+        <!-- 刮削引擎更新 -->
+        <h3 style="margin-top:24px;">刮削引擎</h3>
+        <div style="margin-bottom:12px; font-size:12px; color:#9090a0;">
+          MetaTube SDK — 社区维护的39个刮削提供器，点击按钮自动拉取最新代码并编译
+        </div>
+        <el-button type="warning" @click="updateMetaTube" :loading="metaTubeLoading">
+          {{ metaTubeLoading ? '更新中...' : '更新刮削引擎' }}
+        </el-button>
+        <p v-if="metaTubeResult" style="margin-top:8px; font-size:12px; color:#67c23a; white-space:pre-wrap;">{{ metaTubeResult }}</p>
+        <p v-if="metaTubeError" style="margin-top:8px; font-size:12px; color:#f56c6c;">{{ metaTubeError }}</p>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -252,6 +263,7 @@ const sourceTable = reactive([
   { key: 'whostv', name: 'WhosTV', site: 'whostv.net', type: 'AV', done: true, remark: '', defaultRemark: '可能需代理' },
   { key: 'jphoo', name: 'JpHoo', site: 'www.jphoo1.com', type: 'AV', done: true, remark: '', defaultRemark: '需配置secret/refreshtoken/guestid' },
   { key: 'fc2ppvdb', name: 'FC2PPVDB', site: 'fc2ppvdb.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'metatube', name: 'MetaTube', site: '39个社区提供器', type: '聚合', done: true, remark: '', defaultRemark: '需在常规页启动MetaTube服务' },
 ])
 
 const allChecked = computed(() => sourceTable.every(r => scrapeSources.value.includes(r.key)))
@@ -291,6 +303,19 @@ const allowRenameFolder = ref(false)
 const mergeAutoFolders = ref(true)
 const mergeFilePattern = ref('{name}_{index}{ext}')
 const mergeDryRun = ref(true)
+
+// MetaTube SDK update
+const metaTubeLoading = ref(false)
+const metaTubeResult = ref('')
+const metaTubeError = ref('')
+async function updateMetaTube() {
+  metaTubeLoading.value = true; metaTubeResult.value = ''; metaTubeError.value = ''
+  try {
+    metaTubeResult.value = await invoke('update_metatube_sdk') as string
+  } catch (e: any) {
+    metaTubeError.value = String(e?.message || e)
+  } finally { metaTubeLoading.value = false }
+}
 
 // ─── QR Code Login ───
 

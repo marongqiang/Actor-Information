@@ -72,3 +72,62 @@ pub fn list_folder_images(dir_path: String) -> Result<Vec<String>, crate::utils:
     files.sort();
     Ok(files)
 }
+
+/// Update MetaTube SDK: git pull + go build
+#[tauri::command]
+pub fn update_metatube_sdk() -> Result<String, crate::utils::error::CommandError> {
+    use std::process::Command;
+
+    let sdk_dir = std::env::current_dir()
+        .unwrap_or_default()
+        .parent()
+        .map(|p| p.join("metatube-sdk-go-main"))
+        .unwrap_or_default();
+
+    if !sdk_dir.exists() {
+        return Err(crate::utils::error::CommandError::invalid_input(
+            "MetaTube SDK 目录不存在，请先 git clone",
+        ));
+    }
+
+    // Step 1: git pull
+    let git_output = Command::new("git")
+        .args(["-C", &sdk_dir.to_string_lossy()])
+        .arg("pull")
+        .output()
+        .map_err(|e| crate::utils::error::CommandError::internal(&format!("git pull 失败: {}", e)))?;
+
+    let git_msg = String::from_utf8_lossy(&git_output.stdout).to_string();
+    log::info!("git pull: {}", git_msg.trim());
+
+    if !git_output.status.success() {
+        let err = String::from_utf8_lossy(&git_output.stderr);
+        return Err(crate::utils::error::CommandError::internal(&format!(
+            "git pull 失败: {}", err
+        )));
+    }
+
+    // Step 2: go build
+    let go_output = Command::new("go")
+        .arg("build")
+        .arg("-o")
+        .arg("metatube-server.exe")
+        .arg("./cmd/server/")
+        .current_dir(&sdk_dir)
+        .output()
+        .map_err(|e| crate::utils::error::CommandError::internal(&format!("go build 失败: {}", e)))?;
+
+    if !go_output.status.success() {
+        let err = String::from_utf8_lossy(&go_output.stderr);
+        return Err(crate::utils::error::CommandError::internal(&format!(
+            "go build 失败: {}", err
+        )));
+    }
+
+    let exe_path = sdk_dir.join("metatube-server.exe");
+    Ok(format!(
+        "MetaTube SDK 更新成功！\ngit: {}\n编译产物: {}",
+        git_msg.trim(),
+        exe_path.display()
+    ))
+}

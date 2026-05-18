@@ -37,5 +37,9 @@ Actor Information/
 # Portable builds
 smart-media-vault-*.zip
 
+# MetaTube SDK (external repo, not part of this project)
+metatube-server.exe
+metatube-sdk-go-main/
+
 # Temporary files
 *.tmp

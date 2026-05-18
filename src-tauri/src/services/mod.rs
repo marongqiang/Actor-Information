@@ -7,3 +7,4 @@ pub mod image_cache;
 pub mod task_manager;
 pub mod playback_refresher;
 pub mod secure_config;
+pub mod metatube_service;

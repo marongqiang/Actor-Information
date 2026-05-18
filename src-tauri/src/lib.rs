@@ -24,6 +24,11 @@ pub fn run() {
             // Restore persisted login
             crate::services::pan115::restore_cookie();
 
+            // Start MetaTube scrape engine (best-effort)
+            if let Err(e) = crate::services::metatube_service::start_server() {
+                log::warn!("MetaTube 启动失败(非致命): {}", e);
+            }
+
             log::info!("智能网盘影视库 v{} 启动完成", app.package_info().version);
 
             // Build tray menu
@@ -109,6 +114,7 @@ pub fn run() {
             commands::config::clear_secure_config,
             commands::config::read_image_base64,
             commands::config::list_folder_images,
+            commands::config::update_metatube_sdk,
             // Task
             commands::task::get_pending_tasks,
             commands::task::resume_task,

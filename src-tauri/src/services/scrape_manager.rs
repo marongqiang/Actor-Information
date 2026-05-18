@@ -82,6 +82,7 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             "getav" => scrape_getav(query),
             "whostv" => scrape_whostv(query),
             "fc2ppvdb" => scrape_fc2ppvdb(query),
+            "metatube" => scrape_metatube(query),
             _ => { log::debug!("刮削源 {} 未实现", source); continue; }
         };
         match &r {
@@ -703,6 +704,78 @@ fn scrape_fc2ppvdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
     let overview = doc.select(&sel_desc).next().map(|e| e.text().collect::<String>().trim().to_string());
     Ok(ScrapeResult { source: "fc2ppvdb".into(), title, year: None, poster_url: poster, backdrop_url: None, overview, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 45 })
+}
+
+// ─── MetaTube (local HTTP API) ───
+
+fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
+    let base = crate::services::metatube_service::base_url();
+    let url = format!("{}/v1/movies/search?q={}&fallback=true", base, encode(query));
+    log::info!("MetaTube 查询: {}", url);
+
+    // Quick health check
+    if !crate::services::metatube_service::health_check() {
+        return Err(CommandError::scrape_failed("MetaTube 服务未运行，请在设置中启动"));
+    }
+
+    let resp = get_client().get(&url)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .map_err(|e| CommandError::network(&format!("MetaTube 请求失败: {}", e)))?;
+
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    log::info!("MetaTube 响应: {}", &body[..body.len().min(500)]);
+
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| CommandError::scrape_failed(&format!("MetaTube JSON解析失败: {}", e)))?;
+
+    let results = json["data"].as_array()
+        .ok_or_else(|| CommandError::scrape_failed("MetaTube 返回格式异常"))?;
+
+    if results.is_empty() {
+        return Err(CommandError::scrape_failed("MetaTube 无结果"));
+    }
+
+    let item = &results[0];
+    let title = item["title"].as_str().unwrap_or(query).to_string();
+    let year = item["release_date"].as_str()
+        .or_else(|| item["year"].as_str())
+        .and_then(|d| d[..4].parse().ok());
+    let poster = item["poster_url"].as_str()
+        .or_else(|| item["thumb_url"].as_str())
+        .or_else(|| item["cover_url"].as_str())
+        .map(|s| s.to_string());
+    let overview = item["description"].as_str().or_else(|| item["summary"].as_str()).map(|s| s.to_string());
+    let rating = item["rating"].as_f64();
+    let runtime = item["duration"].as_i64().map(|v| v as i32);
+    let director = item["director"].as_str().map(|s| s.to_string());
+    let provider_name = item["provider"].as_str().unwrap_or("metatube");
+
+    let mut actors = Vec::new();
+    if let Some(arr) = item["actors"].as_array() {
+        for a in arr {
+            if let Some(n) = a.as_str().or_else(|| a["name"].as_str()) {
+                actors.push(n.to_string());
+            }
+        }
+    }
+    let mut genres = Vec::new();
+    if let Some(arr) = item["tags"].as_array() {
+        for t in arr {
+            if let Some(n) = t.as_str() {
+                genres.push(n.to_string());
+            }
+        }
+    }
+
+    Ok(ScrapeResult {
+        source: format!("metatube({})", provider_name),
+        title, year, poster_url: poster, backdrop_url: None,
+        overview, rating, runtime, director,
+        genre: if genres.is_empty() { None } else { Some(genres) },
+        actors: if actors.is_empty() { None } else { Some(actors) },
+        score: 60,
+    })
 }
 
 fn encode(s: &str) -> String {

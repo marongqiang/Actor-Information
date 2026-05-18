@@ -1,0 +1,71 @@
+use std::process::{Child, Command};
+use std::sync::Mutex;
+
+static SERVER: Mutex<Option<Child>> = Mutex::new(None);
+const DEFAULT_PORT: u16 = 9588;
+
+/// Get the base URL for the MetaTube server
+pub fn base_url() -> String {
+    format!("http://127.0.0.1:{}", DEFAULT_PORT)
+}
+
+/// Start the MetaTube server if not already running
+pub fn start_server() -> Result<(), String> {
+    let mut guard = SERVER.lock().map_err(|e| format!("锁失败: {}", e))?;
+    if guard.is_some() {
+        return Ok(()); // already running
+    }
+
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("获取exe路径失败: {}", e))?
+        .parent()
+        .ok_or("无父目录")?
+        .join("metatube-server.exe");
+
+    if !exe_path.exists() {
+        // Try the SDK build directory as fallback
+        let alt_path = std::path::Path::new("D:/Media Library/metatube-sdk-go-main/metatube-server.exe");
+        if alt_path.exists() {
+            log::info!("MetaTube: 使用备用路径 {}", alt_path.display());
+        } else {
+            return Err(format!("MetaTube 服务端未找到，请先编译: {}", exe_path.display()));
+        }
+    }
+
+    let path = if exe_path.exists() { &exe_path } else {
+        &std::path::PathBuf::from("D:/Media Library/metatube-sdk-go-main/metatube-server.exe")
+    };
+
+    log::info!("MetaTube: 启动服务 {} --port={}", path.display(), DEFAULT_PORT);
+    let child = Command::new(path)
+        .arg("--port")
+        .arg(DEFAULT_PORT.to_string())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("启动MetaTube失败: {}", e))?;
+
+    *guard = Some(child);
+    log::info!("MetaTube: 服务已启动, 端口={}", DEFAULT_PORT);
+    Ok(())
+}
+
+/// Stop the MetaTube server
+pub fn stop_server() {
+    if let Ok(mut guard) = SERVER.lock() {
+        if let Some(ref mut child) = *guard {
+            let _ = child.kill();
+            let _ = child.wait();
+            log::info!("MetaTube: 服务已停止");
+        }
+        *guard = None;
+    }
+}
+
+/// Check if the server is running and healthy
+pub fn health_check() -> bool {
+    match reqwest::blocking::get(format!("{}/", base_url())) {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
