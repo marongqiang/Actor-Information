@@ -39,18 +39,22 @@ pub fn start_server() -> Result<(), String> {
         &std::path::PathBuf::from("D:/Media Library/metatube-sdk-go-main/metatube-server.exe")
     };
 
-    // Read proxy config from DB (same as our scrapers use)
-    let proxy_url = crate::db::with_db(|c| {
-        let enabled = crate::db::queries::get_config(c, "proxy_enabled").ok().flatten().unwrap_or_default();
-        if enabled == "true" {
-            let host = crate::db::queries::get_config(c, "proxy_host").ok().flatten().unwrap_or_default();
-            let port = crate::db::queries::get_config(c, "proxy_port").ok().flatten().unwrap_or_default();
-            if !host.is_empty() {
-                return Ok(Some(format!("http://{}:{}", host, port)));
-            }
-        }
-        Ok(None)
-    }).ok().flatten();
+    // Read proxy config from DB
+    let enabled = crate::db::with_db(|c| {
+        crate::db::queries::get_config(c, "proxy_enabled")
+    }).ok().flatten().unwrap_or_default();
+    let host = crate::db::with_db(|c| {
+        crate::db::queries::get_config(c, "proxy_host")
+    }).ok().flatten().unwrap_or_default();
+    let port = crate::db::with_db(|c| {
+        crate::db::queries::get_config(c, "proxy_port")
+    }).ok().flatten().unwrap_or_default();
+    log::info!("MetaTube: proxy_enabled={} host={} port={}", enabled, host, port);
+    let proxy_url = if enabled == "true" && !host.is_empty() {
+        Some(format!("http://{}:{}", host, port))
+    } else {
+        None
+    };
 
     log::info!("MetaTube: 启动服务 {} --port={} proxy={:?}", path.display(), DEFAULT_PORT, proxy_url);
 
