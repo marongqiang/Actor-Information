@@ -724,7 +724,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
         .map_err(|e| CommandError::network(&format!("MetaTube 请求失败: {}", e)))?;
 
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    log::info!("MetaTube 响应: {}", &body[..body.len().min(500)]);
+    log::info!("MetaTube 响应: {}", truncate_log(&body, 500));
 
     let json: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| CommandError::scrape_failed(&format!("MetaTube JSON解析失败: {}", e)))?;
@@ -781,6 +781,13 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
         actors: if actors.is_empty() { None } else { Some(actors) },
         score: 60,
     })
+}
+
+fn truncate_log(s: &str, max: usize) -> &str {
+    if s.len() <= max { return s; }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    &s[..end]
 }
 
 fn encode(s: &str) -> String {
