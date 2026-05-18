@@ -23,9 +23,7 @@ pub static DB: once_cell::sync::Lazy<Mutex<Connection>> =
     });
 
 fn get_db_path() -> PathBuf {
-    let data_dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("smart-media-vault");
+    let data_dir = get_data_dir();
     std::fs::create_dir_all(&data_dir).ok();
     data_dir.join("vault.db")
 }
