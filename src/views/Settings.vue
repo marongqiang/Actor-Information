@@ -455,6 +455,7 @@ onMounted(async () => {
     mergeFilePattern.value = (await invoke('get_config', { key: 'actor_merge_file_naming_pattern' }) as string) || '{name}_{index}{ext}'
     mergeDryRun.value = ((await invoke('get_config', { key: 'actor_merge_dry_run' }) as string) || '1') === '1'
 
+    tmdbApiKey.value = (await invoke('get_secure_config', { key: 'tmdb_api_key' }) as string) || ''
     jphooSecret.value = (await invoke('get_config', { key: 'jphoo_secret' }) as string) || ''
     jphooRefresh.value = (await invoke('get_config', { key: 'jphoo_refreshtoken' }) as string) || ''
     jphooGuestId.value = (await invoke('get_config', { key: 'jphoo_guestid' }) as string) || ''

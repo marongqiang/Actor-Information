@@ -140,9 +140,10 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
 // ─── TMDB (blocking HTTP) ───
 
 fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
-    let api_key = db::with_db(|conn| crate::db::queries::get_config(conn, "tmdb_api_key")).ok().flatten()
+    let api_key = crate::services::secure_config::get_secure_config("tmdb_api_key").ok().flatten()
+        .or_else(|| db::with_db(|conn| crate::db::queries::get_config(conn, "tmdb_api_key")).ok().flatten())
         .or_else(|| std::env::var("TMDB_API_KEY").ok())
-        .ok_or_else(|| CommandError::scrape_failed("TMDB API Key未配置"))?;
+        .ok_or_else(|| CommandError::scrape_failed("TMDB API Key未配置，请在设置→刮削源中填入"))?;
 
     log::info!("TMDB 搜索: query={}", query);
     let url = format!("https://api.themoviedb.org/3/search/movie?api_key={}&query={}&language=zh-CN", api_key, encode(query));
