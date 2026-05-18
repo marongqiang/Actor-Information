@@ -173,12 +173,54 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
         Ok(())
     })?;
 
-    // Auto-translate if we got an original_title and no chinese_name yet
+    // Auto-translate title and genres
     if !result.title.is_empty() {
-        auto_translate_title(file_id, &result.title);
+        auto_translate_movie(file_id, &result.title, result.genre.as_deref());
     }
 
     Ok(())
+}
+
+/// Translate title + genres after scraping
+fn auto_translate_movie(file_id: &str, title: &str, genres: Option<&[String]>) {
+    // Translate title
+    auto_translate_title(file_id, title);
+    // Translate genres
+    if let Some(genres) = genres {
+        if !genres.is_empty() {
+            auto_translate_genres(file_id, genres);
+        }
+    }
+}
+
+fn auto_translate_genres(file_id: &str, genres: &[String]) {
+    let list = genres.join(", ");
+    let deepseek_key = crate::services::secure_config::get_secure_config("deepseek_api_key")
+        .ok().flatten().unwrap_or_default();
+
+    let prompt = format!(
+        "将以下日本AV影片的类型标签翻译成简体中文，每个标签一行，保持顺序：\n{}",
+        list
+    );
+
+    let cn_list = if !deepseek_key.is_empty() {
+        translate_via_deepseek(&prompt, &deepseek_key)
+    } else {
+        None
+    }.or_else(|| translate_via_google(&prompt));
+
+    if let Some(cn_list) = cn_list {
+        let translated: Vec<String> = cn_list.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        if !translated.is_empty() && translated.len() == genres.len() {
+            let json = serde_json::to_string(&translated).unwrap_or_default();
+            let _ = db::with_db(|conn| {
+                conn.execute("UPDATE movies SET genre=?1 WHERE file_id=?2",
+                    rusqlite::params![json, file_id])?;
+                Ok(())
+            });
+            log::info!("类型翻译完成: {:?} -> {:?}", genres, translated);
+        }
+    }
 }
 
 /// Auto-translate original_title to chinese_name after scraping
