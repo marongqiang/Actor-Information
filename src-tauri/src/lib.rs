@@ -24,6 +24,9 @@ pub fn run() {
             // Restore persisted login
             crate::services::pan115::restore_cookie();
 
+            // Store app handle for progress events
+            crate::commands::scrape::set_app_handle(app.handle().clone());
+
             // Start MetaTube scrape engine (best-effort)
             if let Err(e) = crate::services::metatube_service::start_server() {
                 log::warn!("MetaTube 启动失败(非致命): {}", e);

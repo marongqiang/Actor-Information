@@ -1,6 +1,13 @@
 use crate::services::scrape_manager;
 use crate::utils::error::{CommandError, CommandResult};
 use serde::Serialize;
+use std::sync::OnceLock;
+use tauri::Emitter;
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
 
 #[derive(Serialize)]
 pub struct BatchScrapeResult {
@@ -27,6 +34,7 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
         .unwrap_or_else(|| vec!["metatube".into(), "javbus".into()]);
 
     let total = file_ids.len();
+    let app_handle = APP_HANDLE.get().cloned();
 
     // Mark all as scraping
     for fid in &file_ids {
@@ -56,6 +64,13 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
                     }
                 }
                 _ => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
+            }
+
+            if let Some(ref handle) = app_handle {
+                let _ = handle.emit("scrape-progress", ScrapeProgress {
+                    current: i + 1, total, success, failed,
+                    file_name: file_name.clone(),
+                });
             }
 
             std::thread::sleep(std::time::Duration::from_millis(100));
