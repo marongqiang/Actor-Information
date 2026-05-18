@@ -725,66 +725,85 @@ fn scrape_fc2ppvdb(query: &str) -> Result<ScrapeResult, CommandError> {
 
 fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     let base = crate::services::metatube_service::base_url();
-    let url = format!("{}/v1/movies/search?q={}&fallback=true", base, encode(query));
-    log::info!("MetaTube 查询: {}", url);
 
-    // Quick health check
     if !crate::services::metatube_service::health_check() {
         return Err(CommandError::scrape_failed("MetaTube 服务未运行，请在设置中启动"));
     }
 
-    let resp = get_client().get(&url)
+    // Step 1: Search
+    let search_url = format!("{}/v1/movies/search?q={}&fallback=true", base, encode(query));
+    log::info!("MetaTube 搜索: {}", search_url);
+    let resp = get_client().get(&search_url)
         .timeout(std::time::Duration::from_secs(30))
         .send()
-        .map_err(|e| CommandError::network(&format!("MetaTube 请求失败: {}", e)))?;
-
+        .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    log::info!("MetaTube 响应: {}", truncate_log(&body, 500));
+    log::info!("MetaTube 搜索响应: {}", truncate_log(&body, 300));
 
     let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| CommandError::scrape_failed(&format!("MetaTube JSON解析失败: {}", e)))?;
-
-    // Check for API error first
+        .map_err(|e| CommandError::scrape_failed(&format!("MetaTube JSON: {}", e)))?;
     if let Some(err) = json["error"]["message"].as_str() {
         return Err(CommandError::scrape_failed(&format!("MetaTube: {}", err)));
     }
-
     let results = json["data"].as_array()
         .ok_or_else(|| CommandError::scrape_failed("MetaTube 返回格式异常"))?;
-
     if results.is_empty() {
         return Err(CommandError::scrape_failed("MetaTube 无结果"));
     }
 
     let item = &results[0];
+    let provider_name = item["provider"].as_str().unwrap_or("metatube");
+    let movie_id = item["id"].as_str().unwrap_or("");
     let title = item["title"].as_str().unwrap_or(query).to_string();
-    let year = item["release_date"].as_str()
-        .or_else(|| item["year"].as_str())
-        .and_then(|d| d[..4].parse().ok());
-    let poster = item["poster_url"].as_str()
-        .or_else(|| item["thumb_url"].as_str())
+    let year = item["release_date"].as_str().and_then(|d| d[..4].parse().ok());
+    let poster = item["thumb_url"].as_str()
         .or_else(|| item["cover_url"].as_str())
         .map(|s| s.to_string());
-    let overview = item["description"].as_str().or_else(|| item["summary"].as_str()).map(|s| s.to_string());
-    let rating = item["rating"].as_f64();
-    let runtime = item["duration"].as_i64().map(|v| v as i32);
-    let director = item["director"].as_str().map(|s| s.to_string());
-    let provider_name = item["provider"].as_str().unwrap_or("metatube");
-
+    let rating = item["score"].as_f64();
+    // Actors from search result (pq.StringArray → JSON array of strings)
     let mut actors = Vec::new();
     if let Some(arr) = item["actors"].as_array() {
         for a in arr {
-            if let Some(n) = a.as_str().or_else(|| a["name"].as_str()) {
-                actors.push(n.to_string());
-            }
+            if let Some(n) = a.as_str() { actors.push(n.to_string()); }
         }
     }
+
+    // Step 2: Get movie info for full details (runtime, director, genres, overview)
+    let mut overview = None;
+    let mut runtime = None;
+    let mut director = None;
     let mut genres = Vec::new();
-    if let Some(arr) = item["tags"].as_array() {
-        for t in arr {
-            if let Some(n) = t.as_str() {
-                genres.push(n.to_string());
+    let mut full_actors = actors.clone();
+
+    if !provider_name.is_empty() && !movie_id.is_empty() {
+        let info_url = format!("{}/v1/movies/{}/{}", base, provider_name, movie_id);
+        log::info!("MetaTube 详情: {}", info_url);
+        match get_client().get(&info_url).timeout(std::time::Duration::from_secs(15)).send() {
+            Ok(resp) => {
+                if let Ok(body2) = resp.text() {
+                    log::info!("MetaTube 详情响应: {}", truncate_log(&body2, 300));
+                    if let Ok(json2) = serde_json::from_str::<serde_json::Value>(&body2) {
+                        if json2["error"]["message"].is_null() {
+                            let info = &json2["data"];
+                            overview = info["summary"].as_str().map(|s| s.to_string());
+                            runtime = info["runtime"].as_i64().map(|v| v as i32);
+                            director = info["director"].as_str().map(|s| s.to_string());
+                            if let Some(arr) = info["actors"].as_array() {
+                                full_actors.clear();
+                                for a in arr {
+                                    if let Some(n) = a.as_str() { full_actors.push(n.to_string()); }
+                                }
+                            }
+                            if let Some(arr) = info["genres"].as_array() {
+                                for g in arr {
+                                    if let Some(n) = g.as_str() { genres.push(n.to_string()); }
+                                }
+                            }
+                        }
+                    }
+                }
             }
+            Err(e) => log::warn!("MetaTube 详情请求失败: {}", e),
         }
     }
 
@@ -793,8 +812,8 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
         title, year, poster_url: poster, backdrop_url: None,
         overview, rating, runtime, director,
         genre: if genres.is_empty() { None } else { Some(genres) },
-        actors: if actors.is_empty() { None } else { Some(actors) },
-        score: 60,
+        actors: if full_actors.is_empty() { None } else { Some(full_actors) },
+        score: 65,
     })
 }
 

@@ -48,7 +48,7 @@
           </div>
         </div>
         <div class="movie-info">
-          <p class="movie-title" :title="movie.title">{{ movie.title }}</p>
+          <p class="movie-title" :title="movie.title">{{ movie.chinese_name || movie.title }}</p>
           <p class="movie-meta">
             <span v-if="movie.year">{{ movie.year }}</span>
             <span v-if="movie.rating">★ {{ movie.rating.toFixed(1) }}</span>

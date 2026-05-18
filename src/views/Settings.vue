@@ -25,6 +25,9 @@
                   <template v-if="row.key === 'tmdb'">
                     <el-input v-model="tmdbApiKey" type="password" show-password size="small" placeholder="TMDB API Key" />
                   </template>
+                  <template v-else-if="row.key === 'deepseek'">
+                    <el-input v-model="deepseekApiKey" type="password" show-password size="small" placeholder="DeepSeek API Key" />
+                  </template>
                   <template v-else-if="row.key === 'jphoo'">
                     <el-input v-model="jphooSecret" type="password" show-password size="small" placeholder="secret" style="margin-bottom:2px;" />
                     <el-input v-model="jphooRefresh" size="small" placeholder="refreshtoken" style="margin-bottom:2px;" />
@@ -241,6 +244,7 @@ const tmdbApiKey = ref('')
 const jphooSecret = ref('')
 const jphooRefresh = ref('')
 const jphooGuestId = ref('')
+const deepseekApiKey = ref('')
 
 const sourceTable = reactive([
   { key: 'tmdb', name: 'TMDB', site: 'api.themoviedb.org', type: '通用', done: true, remark: '', defaultRemark: '' },
@@ -264,6 +268,7 @@ const sourceTable = reactive([
   { key: 'jphoo', name: 'JpHoo', site: 'www.jphoo1.com', type: 'AV', done: true, remark: '', defaultRemark: '需配置secret/refreshtoken/guestid' },
   { key: 'fc2ppvdb', name: 'FC2PPVDB', site: 'fc2ppvdb.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
   { key: 'metatube', name: 'MetaTube', site: '39个社区提供器', type: '聚合', done: true, remark: '', defaultRemark: '需在常规页启动MetaTube服务' },
+  { key: 'deepseek', name: 'DeepSeek', site: 'api.deepseek.com', type: '翻译', done: true, remark: '', defaultRemark: '用于翻译片名，需API Key' },
 ])
 
 const allChecked = computed(() => sourceTable.every(r => scrapeSources.value.includes(r.key)))
@@ -388,6 +393,7 @@ async function saveScrapeSettings() {
   sourceTable.forEach(r => { if (r.remark) remarks[r.key] = r.remark })
   await invoke('set_config', { key: 'scrape_remarks', value: JSON.stringify(remarks) })
   if (tmdbApiKey.value) await invoke('set_secure_config', { key: 'tmdb_api_key', value: tmdbApiKey.value })
+  if (deepseekApiKey.value) await invoke('set_secure_config', { key: 'deepseek_api_key', value: deepseekApiKey.value })
   await invoke('set_config', { key: 'jphoo_secret', value: jphooSecret.value.trim() })
   await invoke('set_config', { key: 'jphoo_refreshtoken', value: jphooRefresh.value.trim() })
   await invoke('set_config', { key: 'jphoo_guestid', value: jphooGuestId.value.trim() })
@@ -487,6 +493,7 @@ onMounted(async () => {
     mergeDryRun.value = ((await invoke('get_config', { key: 'actor_merge_dry_run' }) as string) || '1') === '1'
 
     tmdbApiKey.value = (await invoke('get_secure_config', { key: 'tmdb_api_key' }) as string) || ''
+    deepseekApiKey.value = (await invoke('get_secure_config', { key: 'deepseek_api_key' }) as string) || ''
     jphooSecret.value = (await invoke('get_config', { key: 'jphoo_secret' }) as string) || ''
     jphooRefresh.value = (await invoke('get_config', { key: 'jphoo_refreshtoken' }) as string) || ''
     jphooGuestId.value = (await invoke('get_config', { key: 'jphoo_guestid' }) as string) || ''

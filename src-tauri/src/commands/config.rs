@@ -73,9 +73,47 @@ pub fn list_folder_images(dir_path: String) -> Result<Vec<String>, crate::utils:
     Ok(files)
 }
 
-/// Translate text using Google Translate (free, no API key needed)
+/// Translate text using DeepSeek API (primary) or Google Translate (fallback)
 #[tauri::command]
 pub fn translate_text(text: String) -> Result<String, crate::utils::error::CommandError> {
+    // Try DeepSeek first
+    let deepseek_key = crate::services::secure_config::get_secure_config("deepseek_api_key")
+        .ok().flatten().unwrap_or_default();
+    if !deepseek_key.is_empty() {
+        log::info!("翻译: 使用DeepSeek");
+        let client = reqwest::blocking::Client::new();
+        let body = serde_json::json!({
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": "你是一个翻译助手。将用户输入的日文/英文片名翻译成简体中文。只返回翻译结果，不要任何解释。"},
+                {"role": "user", "content": text}
+            ],
+            "max_tokens": 100,
+            "temperature": 0.3
+        });
+        match client.post("https://api.deepseek.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", deepseek_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+        {
+            Ok(resp) => {
+                if let Ok(json) = resp.json::<serde_json::Value>() {
+                    if let Some(choice) = json["choices"][0]["message"]["content"].as_str() {
+                        let result = choice.trim().to_string();
+                        if !result.is_empty() && result != text {
+                            return Ok(result);
+                        }
+                    }
+                }
+            }
+            Err(e) => log::warn!("DeepSeek翻译失败: {}, 回退到Google", e),
+        }
+    }
+
+    // Fallback: Google Translate
+    log::info!("翻译: 使用Google Translate");
     let url = format!(
         "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q={}",
         encode_uri(&text)
@@ -84,7 +122,6 @@ pub fn translate_text(text: String) -> Result<String, crate::utils::error::Comma
         .map_err(|e| crate::utils::error::CommandError::network(&e.to_string()))?;
     let body = resp.text()
         .map_err(|e| crate::utils::error::CommandError::network(&e.to_string()))?;
-    // Parse Google Translate response: [[["translated text","original",...]],...]
     let json: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| crate::utils::error::CommandError::internal(&format!("翻译解析失败: {}", e)))?;
     let result = json[0][0][0].as_str()
