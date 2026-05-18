@@ -64,11 +64,11 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
     ordered_sources.sort_by_key(|s| if s.as_str() == "metatube" { 0 } else { 1 });
 
     let mut results = Vec::new();
-    let mut got_metatube = false;
+    let mut metatube_done = false; // true if MT succeeded OR MT confirmed no results
     for source in ordered_sources {
-        // After metatube succeeds, skip other sources (metatube covers 39 providers)
-        if got_metatube && source.as_str() != "metatube" {
-            log::debug!("刮削 {}: 跳过(MetaTube已成功)", source);
+        // After MetaTube finishes (success or confirmed no-results), skip other sources
+        if metatube_done && source.as_str() != "metatube" {
+            log::debug!("刮削 {}: 跳过(MetaTube已完成)", source);
             continue;
         }
 
@@ -100,10 +100,15 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
         match &r {
             Ok(res) => {
                 log::info!("刮削 {}: 成功, title={}", source, res.title);
-                if source.as_str() == "metatube" { got_metatube = true; }
+                if source.as_str() == "metatube" { metatube_done = true; }
                 results.push(r.unwrap());
             }
-            Err(e) => log::warn!("刮削 {}: 失败 - {}", source, e),
+            Err(e) => {
+                log::warn!("刮削 {}: 失败 - {}", source, e);
+                // MetaTube returned a clear answer (not found / network error that's not a crash)
+                // Skip remaining sources — they won't have better results
+                if source.as_str() == "metatube" { metatube_done = true; }
+            },
         }
     }
     results.sort_by(|a, b| b.score.cmp(&a.score));
