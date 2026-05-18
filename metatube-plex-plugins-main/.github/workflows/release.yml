@@ -1,0 +1,51 @@
+name: Publish Plex Plug-in Bundle
+
+concurrency:
+  group: release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/release.yml'
+      - '*.bundle/**'
+
+jobs:
+  bundle:
+    name: Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Version
+        id: shell
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "version=$(date -u '+%Y.%-m%d.%-H%M.0')" >> $GITHUB_OUTPUT
+
+      - name: Make bundle
+        run: |
+          echo v${{ steps.shell.outputs.version }}-${{ steps.shell.outputs.commit }} | tee VERSION
+          cp LICENSE   MetaTube.bundle/
+          cp VERSION   MetaTube.bundle/
+          cp LICENSE   MetaTubeHelper.bundle/
+          cp VERSION   MetaTubeHelper.bundle/
+          zip -r MetaTube.bundle.zip MetaTube.bundle/
+          zip -r MetaTubeHelper.bundle.zip MetaTubeHelper.bundle/
+
+      - name: Upload Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            MetaTube.bundle.zip
+            MetaTubeHelper.bundle.zip
+          body: _Auto Released by GitHub Actions_
+          name: v${{ steps.shell.outputs.version }}
+          tag_name: bundle
+          draft: false
+          prerelease: false

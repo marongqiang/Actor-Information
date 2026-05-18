@@ -39,14 +39,34 @@ pub fn start_server() -> Result<(), String> {
         &std::path::PathBuf::from("D:/Media Library/metatube-sdk-go-main/metatube-server.exe")
     };
 
-    log::info!("MetaTube: 启动服务 {} --port={}", path.display(), DEFAULT_PORT);
-    let child = Command::new(path)
-        .arg("--port")
-        .arg(DEFAULT_PORT.to_string())
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
+    // Read proxy config from DB (same as our scrapers use)
+    let proxy_url = crate::db::with_db(|c| {
+        let enabled = crate::db::queries::get_config(c, "proxy_enabled").ok().flatten().unwrap_or_default();
+        if enabled == "true" {
+            let host = crate::db::queries::get_config(c, "proxy_host").ok().flatten().unwrap_or_default();
+            let port = crate::db::queries::get_config(c, "proxy_port").ok().flatten().unwrap_or_default();
+            if !host.is_empty() {
+                return Ok(Some(format!("http://{}:{}", host, port)));
+            }
+        }
+        Ok(None)
+    }).ok().flatten();
+
+    log::info!("MetaTube: 启动服务 {} --port={} proxy={:?}", path.display(), DEFAULT_PORT, proxy_url);
+
+    let mut cmd = Command::new(path);
+    cmd.arg("--port").arg(DEFAULT_PORT.to_string())
+       .creation_flags(CREATE_NO_WINDOW)
+       .stdout(std::process::Stdio::null())
+       .stderr(std::process::Stdio::null());
+
+    if let Some(ref proxy) = proxy_url {
+        cmd.env("HTTP_PROXY", proxy)
+           .env("HTTPS_PROXY", proxy)
+           .env("MT_PROVIDER__PROXY", proxy); // MetaTube global provider proxy
+    }
+
+    let child = cmd.spawn()
         .map_err(|e| format!("启动MetaTube失败: {}", e))?;
 
     *guard = Some(child);
