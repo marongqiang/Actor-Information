@@ -400,6 +400,8 @@ async function saveScrapeSettings() {
 
 async function saveProxySettings() {
   await invoke('set_config', { key: 'proxy_enabled', value: String(proxyEnabled.value) })
+  await invoke('set_config', { key: 'proxy_host', value: proxyHost.value })
+  await invoke('set_config', { key: 'proxy_port', value: String(proxyPort.value) })
   ElMessage.success('代理设置已保存')
 }
 
@@ -468,6 +470,10 @@ onMounted(async () => {
 
     const proxy: string | null = await invoke('get_config', { key: 'proxy_enabled' })
     proxyEnabled.value = proxy === 'true'
+    const ph: string | null = await invoke('get_config', { key: 'proxy_host' })
+    if (ph) proxyHost.value = ph
+    const pp: string | null = await invoke('get_config', { key: 'proxy_port' })
+    if (pp) proxyPort.value = parseInt(pp) || 1080
 
     const cm: string | null = await invoke('get_config', { key: 'cache_max_size' })
     if (cm) cacheMaxSize.value = Math.round(parseInt(cm) / 1024 / 1024)
