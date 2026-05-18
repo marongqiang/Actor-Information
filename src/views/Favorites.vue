@@ -23,7 +23,7 @@
           @click="$router.push(`/detail/${m.file_id}`)"
           @contextmenu.prevent="onContextMenu($event, m)">
           <div class="poster-container">
-            <img v-if="m.poster_local" :src="assetUrl(m.poster_local)" class="poster-img" />
+            <img v-if="posterUrls[m.file_id]" :src="posterUrls[m.file_id]" class="poster-img" />
             <div v-else class="poster-placeholder"><el-icon :size="40"><PictureFilled /></el-icon></div>
           </div>
           <div v-if="m.progress" class="progress-bar">
@@ -74,7 +74,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, StarFilled, PictureFilled } from '@element-plus/icons-vue'
 import type { MovieItem, GroupItem } from '@/types'
@@ -99,7 +99,13 @@ const ctxSub = ref('')
 const favGroups = ref<GroupItem[]>([])
 const posterGroups = ref<GroupItem[]>([])
 
-function assetUrl(p: string) { return convertFileSrc(p.replace(/\\/g, '/')) }
+const posterUrls = reactive<Record<string, string>>({})
+async function loadPoster(m: MovieItem) {
+  if (!m.poster_local || posterUrls[m.file_id]) return
+  try {
+    posterUrls[m.file_id] = await invoke('read_image_base64', { path: m.poster_local }) as string
+  } catch { posterUrls[m.file_id] = '' }
+}
 
 watch(() => route.query.group_id, (val) => {
   filterGroupId.value = val ? Number(val) : undefined; doSearch()
@@ -128,6 +134,8 @@ async function fetchData() {
     total.value = result.total || 0
   } finally { loading.value = false }
 }
+
+watch(movies, (list) => { for (const m of list) { loadPoster(m) } })
 
 function onContextMenu(e: MouseEvent, movie: MovieItem) {
   ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.movie = movie

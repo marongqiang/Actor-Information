@@ -35,8 +35,8 @@
       >
         <div class="poster-container">
           <img
-            v-if="movie.poster_local"
-            :src="assetUrl(movie.poster_local)"
+            v-if="posterUrls[movie.file_id]"
+            :src="posterUrls[movie.file_id]"
             :alt="movie.title"
             class="poster-img"
           />
@@ -94,7 +94,7 @@
 import { ref, onMounted, computed, reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, PictureFilled } from '@element-plus/icons-vue'
 import type { MovieItem, GroupItem } from '@/types'
@@ -126,7 +126,22 @@ const years = computed(() => {
   return Array.from({ length: 40 }, (_, i) => y - i)
 })
 
-function assetUrl(path: string) { return path.startsWith('http') ? path : convertFileSrc(path.replace(/\\/g, '/')) }
+// Poster images loaded as base64 data URLs
+const posterUrls = reactive<Record<string, string>>({})
+
+async function loadPoster(movie: MovieItem) {
+  if (!movie.poster_local || posterUrls[movie.file_id]) return
+  try {
+    const url = await invoke('read_image_base64', { path: movie.poster_local }) as string
+    posterUrls[movie.file_id] = url
+  } catch {
+    posterUrls[movie.file_id] = '' // mark as broken
+  }
+}
+
+watch(() => store.movies, (movies) => {
+  for (const m of movies) { loadPoster(m) }
+}, { immediate: true })
 
 function doSearch() {
   currentPage.value = 1
