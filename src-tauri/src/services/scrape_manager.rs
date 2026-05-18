@@ -729,6 +729,11 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     let json: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| CommandError::scrape_failed(&format!("MetaTube JSON解析失败: {}", e)))?;
 
+    // Check for API error first
+    if let Some(err) = json["error"]["message"].as_str() {
+        return Err(CommandError::scrape_failed(&format!("MetaTube: {}", err)));
+    }
+
     let results = json["data"].as_array()
         .ok_or_else(|| CommandError::scrape_failed("MetaTube 返回格式异常"))?;
 
