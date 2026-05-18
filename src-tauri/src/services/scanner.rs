@@ -54,6 +54,16 @@ pub async fn scan_directory(
         log::warn!("未发现任何视频文件！请检查1)目录中是否有视频 2)文件扩展名是否在配置中({:?})", get_video_extensions());
     }
     let total = all_files.len() as i64;
+
+    // For "full" mode: delete ALL existing records first, then re-add everything
+    if mode == "full" {
+        let deleted_count = db::with_db(|conn| {
+            conn.execute("DELETE FROM movies", [])?;
+            Ok(conn.changes() as i64) as CommandResult<i64>
+        })?;
+        log::info!("全量扫描: 已清空 {} 部旧影片记录", deleted_count);
+    }
+
     let mut new_count = 0i64;
     let mut updated_count = 0i64;
 
@@ -63,97 +73,56 @@ pub async fn scan_directory(
             None => continue,
         };
 
-        let exists = db::with_db(|conn| {
-            let exists: bool = conn
-                .query_row("SELECT COUNT(*) > 0 FROM movies WHERE file_id = ?1", [&file_id], |row| row.get(0))
-                .unwrap_or(false);
-            Ok(exists)
-        })?;
-
         let now = now_ts();
 
-        if !exists {
-            if mode == "full" || mode == "incremental" {
-                let title = file.name.rsplit('.').next()
-                    .map(|ext| file.name[..file.name.len() - ext.len() - 1].to_string())
-                    .unwrap_or_else(|| file.name.clone());
-
-                let m = db::queries::InsertMovie {
-                    file_id: file_id.clone(),
-                    title: title.clone(),
-                    original_title: None,
-                    year: None,
-                    poster_url: None,
-                    poster_local: None,
-                    backdrop_url: None,
-                    overview: None,
-                    rating: None,
-                    runtime: None,
-                    director: None,
-                    genre: None,
-                    file_name: file.name.clone(),
-                    file_size: Some(file.size),
-                    created_at: now,
-                    updated_at: now,
-                    is_hidden: false,
-                };
-
-                db::with_db(|conn| db::queries::insert_movie(conn, &m))?;
-                new_count += 1;
-                if new_count == 1 { log::info!("第一部入库影片: {} (fid={})", m.title, m.file_id); }
-            }
-        } else {
-            // Check if file was updated
-            db::with_db(|conn| {
-                conn.execute(
-                    "UPDATE movies SET file_size = ?1, updated_at = ?2 WHERE file_id = ?3 AND file_size != ?1",
-                    rusqlite::params![file.size, now, file_id],
-                )?;
-                if conn.changes() > 0 {
-                    Ok(()) as CommandResult<()>
-                } else {
-                    Ok(())
-                }
+        if mode == "incremental" {
+            let exists = db::with_db(|conn| {
+                Ok(conn.query_row("SELECT COUNT(*) > 0 FROM movies WHERE file_id = ?1", [&file_id], |row| row.get(0))
+                    .unwrap_or(false))
             })?;
-            // We'll just count all existing as updated for simplicity in incremental mode
-            if mode == "full" {
+            if exists {
+                // Update file size if changed
+                db::with_db(|conn| {
+                    conn.execute(
+                        "UPDATE movies SET file_size = ?1, updated_at = ?2 WHERE file_id = ?3 AND file_size != ?1",
+                        rusqlite::params![file.size, now, file_id],
+                    )?;
+                    Ok(())
+                })?;
                 updated_count += 1;
+                continue;
             }
         }
+
+        // Full mode: all files are new; Incremental mode: only new files reach here
+        let title = file.name.rsplit('.').next()
+            .map(|ext| file.name[..file.name.len() - ext.len() - 1].to_string())
+            .unwrap_or_else(|| file.name.clone());
+
+        let m = db::queries::InsertMovie {
+            file_id: file_id.clone(),
+            title: title.clone(),
+            original_title: None, year: None,
+            poster_url: None, poster_local: None, backdrop_url: None,
+            overview: None, rating: None, runtime: None,
+            director: None, genre: None,
+            file_name: file.name.clone(),
+            file_size: Some(file.size),
+            created_at: now, updated_at: now,
+            is_hidden: false,
+        };
+
+        db::with_db(|conn| db::queries::insert_movie(conn, &m))?;
+        new_count += 1;
+        if new_count == 1 { log::info!("第一部入库影片: {} (fid={})", m.title, m.file_id); }
     }
 
-    // For "full" mode, mark deleted files (files not in the current listing)
-    let deleted = if mode == "full" {
-        let current_ids: Vec<String> = all_files.iter()
-            .filter_map(|f| f.file_id.clone())
-            .collect();
-
-        db::with_db(|conn| {
-            let id_list = current_ids.iter()
-                .map(|id| format!("'{}'", id.replace('\'', "''")))
-                .collect::<Vec<_>>()
-                .join(",");
-
-            if !id_list.is_empty() {
-                conn.execute(
-                    &format!("UPDATE movies SET is_hidden = 1 WHERE file_id NOT IN ({})", id_list),
-                    [],
-                )?;
-                Ok(conn.changes() as i64)
-            } else {
-                Ok(0i64)
-            }
-        })?
-    } else {
-        0
-    };
-
-    log::info!("入库完成: 新增{}部, 更新{}部, 隐藏{}部", new_count, updated_count, deleted);
+    log::info!("扫描完成: 新增{}部, 更新{}部 (全量={})", new_count, updated_count, mode == "full");
     Ok(ScanResult {
         total,
         new: new_count,
         updated: updated_count,
-        deleted,
+        deleted: 0,
     })
 }
 
