@@ -72,6 +72,27 @@
           <el-input-number v-model="scanDepth" :min="1" :max="10" size="small" style="width: 100px;" />
           <span style="color: #888; font-size: 12px; margin-left: 8px;">1=仅当前目录，5=5层子目录</span>
         </div>
+        <div class="setting-item">
+          <label>视频扩展名</label>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+            <el-tag
+              v-for="(ext, i) in extTags"
+              :key="i"
+              closable
+              size="small"
+              @close="removeExt(i)"
+            >{{ ext }}</el-tag>
+            <el-input
+              v-model="newExt"
+              size="small"
+              style="width:80px;"
+              placeholder="添加"
+              @keyup.enter="addExt"
+              @blur="addExt"
+            />
+            <span style="color:#888;font-size:11px;">按回车添加</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -144,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, computed, reactive, watch } from 'vue'
 import { useScanStore } from '@/stores/scan'
 import { useTaskStore } from '@/stores/task'
 import { invoke } from '@tauri-apps/api/core'
@@ -174,6 +195,16 @@ const scanMode = ref('incremental')
 const scanDepth = ref(5)
 const autoScrape = ref(false)
 const lastResult = ref<any>(null)
+
+// Video extension tags
+const extTags = ref<string[]>(['mp4','mkv','avi','mov','rmvb','flv','wmv','ts','iso','m2ts'])
+const newExt = ref('')
+function addExt() {
+  const v = newExt.value.trim().toLowerCase().replace(/^\./, '')
+  if (v && !extTags.value.includes(v)) { extTags.value.push(v) }
+  newExt.value = ''
+}
+function removeExt(i: number) { extTags.value.splice(i, 1) }
 
 const canScan = computed(() => currentCid.value !== '0' || selectedDirs.value.length > 0)
 
@@ -280,7 +311,15 @@ onMounted(async () => {
   if (lastCid) { currentCid.value = lastCid; await loadDir(lastCid) }
   if (lastDepth) scanDepth.value = parseInt(lastDepth)
   if (lastMode) scanMode.value = lastMode
+  // Load video extensions
+  const exts: string | null = await invoke('get_config', { key: 'video_extensions' })
+  if (exts) { try { const arr = JSON.parse(exts); if (Array.isArray(arr) && arr.length) extTags.value = arr } catch { extTags.value = exts.split(',').map((s:string) => s.trim()).filter(Boolean) } }
 })
+
+// Auto-save video extensions
+watch(extTags, (v) => {
+  invoke('set_config', { key: 'video_extensions', value: JSON.stringify(v) })
+}, { deep: true })
 </script>
 
 <style scoped>

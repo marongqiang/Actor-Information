@@ -21,8 +21,9 @@ pub struct ScrapeResult {
 
 fn build_scrape_client() -> reqwest::blocking::Client {
     let mut builder = reqwest::blocking::Client::builder()
+        .cookie_store(true)
         .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0");
 
     // Check proxy config
     if let Ok(Some(enabled)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_enabled")) {
@@ -72,11 +73,15 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             "mgstage" => scrape_mgstage(query),
             "fc2" => scrape_fc2(query),
             "jphoo" => scrape_jphoo(query),
-            "airav" | "jav321" | "xcity" | "prestige" | "avsox" | "njav" | "getav" | "whostv" | "fc2ppvdb" => {
-                // These sources require complex anti-bot handling
-                log::debug!("刮削源 {} 尚未实现(被反爬保护)", source);
-                continue;
-            }
+            "airav" => scrape_airav(query),
+            "jav321" => scrape_jav321(query),
+            "xcity" => scrape_xcity(query),
+            "prestige" => scrape_prestige(query),
+            "avsox" => scrape_avsox(query),
+            "njav" => scrape_njav(query),
+            "getav" => scrape_getav(query),
+            "whostv" => scrape_whostv(query),
+            "fc2ppvdb" => scrape_fc2ppvdb(query),
             _ => { log::debug!("刮削源 {} 未实现", source); continue; }
         };
         match &r {
@@ -463,44 +468,52 @@ fn scrape_fc2(query: &str) -> Result<ScrapeResult, CommandError> {
     Ok(ScrapeResult { source: "fc2".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: None, score: 55 })
 }
 
-// ─── JpHoo (blocking HTML parse) ───
+// ─── JpHoo (JSON API) ───
 
 fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
-    let code = query.to_uppercase().replace(['-', '_', ' '], "");
-    // Use JpHoo's own search API (returns JSON)
-    // First visit homepage to get guest cookie
-    let _ = get_client().get("https://www.jphoo1.com/").send();
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string();
+    let nonce = (1_000_000_000u64 + rand::random::<u64>() % 9_000_000_000).to_string();
+
+    let secret = db::with_db(|c| crate::db::queries::get_config(c, "jphoo_secret")).ok().flatten().unwrap_or_default().trim().to_string();
+    let refreshtoken = db::with_db(|c| crate::db::queries::get_config(c, "jphoo_refreshtoken")).ok().flatten().unwrap_or_default().trim().to_string();
+    let guest_id = db::with_db(|c| crate::db::queries::get_config(c, "jphoo_guestid")).ok().flatten().unwrap_or_default().trim().to_string();
+
+    if secret.is_empty() || refreshtoken.is_empty() || guest_id.is_empty() {
+        return Err(CommandError::scrape_failed("JpHoo未配置secret/refreshtoken/guestid，请在设置→刮削源中配置"));
+    }
 
     let url = format!("https://www.jphoo1.com/prod-api/v2/search/list?pageNum=1&pageSize=24&operationName=works&keyword={}", code);
-    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis().to_string();
-    let nonce = rand::random::<u64>().to_string();
-    let guest_id = format!("guest-{}", uuid::Uuid::new_v4());
+    log::info!("JpHoo ══════════════════════════════════════");
+    log::info!("JpHoo URL: {}", url);
+    log::info!("JpHoo 请求头:");
+    log::info!("  guestid: {}", guest_id);
+    log::info!("  istoken: true");
+    log::info!("  loading: true");
+    log::info!("  nonce: {}", nonce);
+    log::info!("  priority: u=1, i");
+    log::info!("  refreshtoken: {}", refreshtoken);
+    log::info!("  secret: {}", secret);
+    log::info!("  timestamp: {}", ts);
+    log::info!("JpHoo ══════════════════════════════════════");
 
-    // Read user-configured tokens from config
-    let secret = db::with_db(|c| crate::db::queries::get_config(c, "jphoo_secret")).ok().flatten().unwrap_or_default();
-    let refreshtoken = db::with_db(|c| crate::db::queries::get_config(c, "jphoo_refreshtoken")).ok().flatten().unwrap_or_default();
-
-    log::info!("JpHoo API请求: {}", url);
-    let mut req = get_client().get(&url)
-        .header("Referer", format!("https://www.jphoo1.com/search/works/{}", code))
-        .header("Accept", "application/json")
+    let resp = get_client().get(&url)
         .header("guestid", &guest_id)
         .header("istoken", "true")
         .header("loading", "true")
         .header("nonce", &nonce)
-        .header("timestamp", &ts);
-    if !secret.is_empty() { req = req.header("secret", &secret); }
-    if !refreshtoken.is_empty() { req = req.header("refreshtoken", &refreshtoken); }
-    let resp = req.send().map_err(|e| CommandError::network(&e.to_string()))?;
-    if !resp.status().is_success() {
-        log::warn!("JpHoo API HTTP {}", resp.status());
-        return Err(CommandError::scrape_failed(&format!("JpHoo不可用 (HTTP {})", resp.status())));
-    }
-
+        .header("priority", "u=1, i")
+        .header("refreshtoken", &refreshtoken)
+        .header("secret", &secret)
+        .header("timestamp", &ts)
+        .send()
+        .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     log::info!("JpHoo API响应: {}", &body[..body.len().min(500)]);
 
-    let json: serde_json::Value = serde_json::from_str(&body)
+    let json_str = body.find('{').map(|i| &body[i..]).unwrap_or(&body);
+    let json: serde_json::Value = serde_json::from_str(json_str)
         .map_err(|e| CommandError::scrape_failed(&format!("JpHoo JSON解析失败: {}", e)))?;
 
     let list = json["data"]["list"].as_array()
@@ -514,12 +527,9 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
     let title = item["title"].as_str()
         .or_else(|| item["name"].as_str())
         .unwrap_or(query).to_string();
-    let year = item["releaseDate"].as_str()
-        .or_else(|| item["year"].as_str())
+    let year = item["releaseDate"].as_str().or_else(|| item["year"].as_str())
         .and_then(|d| d[..4].parse().ok());
-    let poster = item["cover"].as_str()
-        .or_else(|| item["img"].as_str())
-        .or_else(|| item["image"].as_str())
+    let poster = item["cover"].as_str().or_else(|| item["img"].as_str()).or_else(|| item["image"].as_str())
         .map(|s| if s.starts_with("http") { s.to_string() } else { format!("https://www.jphoo1.com{}", s) });
     let overview = item["description"].as_str().map(|s| s.to_string());
     let runtime = item["duration"].as_i64().map(|v| v as i32);
@@ -542,6 +552,156 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
         actors: if actors.is_empty() { None } else { Some(actors) },
         score: 70,
     })
+}
+
+// ─── Airav ───
+fn scrape_airav(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.airav.wiki/search?q={}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".video-title, .item-title, h2 a").unwrap();
+    let sel_poster = scraper::Selector::parse(".video-cover img, .item-cover img, .poster img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actress a, .actor a, .star a").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    Ok(ScrapeResult { source: "airav".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
+}
+
+// ─── Jav321 ───
+fn scrape_jav321(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.jav321.com/search?keyword={}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".movie-title, .video-title, h3 a").unwrap();
+    let sel_poster = scraper::Selector::parse(".movie-cover img, img.cover, .thumbnail img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actress-name, .star-name, .actor a").unwrap();
+    let sel_year = scraper::Selector::parse(".release-date, .date, .year").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    let year = doc.select(&sel_year).next().and_then(|e| e.text().collect::<String>().chars().filter(|c| c.is_ascii_digit()).take(4).collect::<String>().parse().ok());
+    Ok(ScrapeResult { source: "jav321".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
+}
+
+// ─── XCITY ───
+fn scrape_xcity(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.xcity.jp/avod/list/?keyword={}", code);
+    let resp = get_client().get(&url).header("Referer", "https://www.xcity.jp/").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".itemTitle a, .videoTitle, .titleArea h3").unwrap();
+    let sel_poster = scraper::Selector::parse(".itemPhoto img, .videoPhoto img, .packageImage img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actressName a, .performer a, .starName").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| if s.starts_with("http") { s.to_string() } else { format!("https:{}", s) }));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    Ok(ScrapeResult { source: "xcity".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 45 })
+}
+
+// ─── Prestige ───
+fn scrape_prestige(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://www.prestige-av.com/goods/goods_list.php?search_word={}", code);
+    let resp = get_client().get(&url).header("Referer", "https://www.prestige-av.com/").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".goods_name, .goods-title, .item-name a").unwrap();
+    let sel_poster = scraper::Selector::parse(".goods_image img, .goods-photo img, .item-img img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actress_name a, .performer a, .cast_name").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| if s.starts_with("http") { s.to_string() } else { format!("https://www.prestige-av.com{}", s) }));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    Ok(ScrapeResult { source: "prestige".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 45 })
+}
+
+// ─── Avsox ───
+fn scrape_avsox(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://avsox.cyou/cn/search/{}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".movie-title h3, .video-title, .item-title a").unwrap();
+    let sel_poster = scraper::Selector::parse(".movie-cover img, .video-img img, .thumb img").unwrap();
+    let sel_actors = scraper::Selector::parse(".star-name a, .actress a, .cast span").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    Ok(ScrapeResult { source: "avsox".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
+}
+
+// ─── Njav ───
+fn scrape_njav(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://njav.tv/search/{}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".video-title, .movie-title, h2 a, .item-title").unwrap();
+    let sel_poster = scraper::Selector::parse(".video-img img, .poster img, .thumb img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actress-name, .star a, .actor-tag").unwrap();
+    let sel_genres = scraper::Selector::parse(".tag a, .category a, .genre span").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    let genres: Vec<String> = doc.select(&sel_genres).map(|e| e.text().collect::<String>().trim().to_string()).filter(|g| !g.is_empty()).collect();
+    Ok(ScrapeResult { source: "njav".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 45 })
+}
+
+// ─── GetAV ───
+fn scrape_getav(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://getav.info/search?keyword={}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".video-title, .movie-title, h3 a, .item-name").unwrap();
+    let sel_poster = scraper::Selector::parse(".video-cover img, .poster-img img, .thumb img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actress a, .star-name, .cast-item").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    Ok(ScrapeResult { source: "getav".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 45 })
+}
+
+// ─── WhosTV ───
+fn scrape_whostv(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://whostv.net/search?keyword={}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".video-title, .movie-title, h2 a, .item-title").unwrap();
+    let sel_poster = scraper::Selector::parse(".video-img img, .poster img, .cover-img img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actress-name, .star a, .performer-name").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    Ok(ScrapeResult { source: "whostv".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 40 })
+}
+
+// ─── FC2PPVDB ───
+fn scrape_fc2ppvdb(query: &str) -> Result<ScrapeResult, CommandError> {
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+    let url = format!("https://fc2ppvdb.com/search?keyword={}", code);
+    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    let doc = scraper::Html::parse_document(&body);
+    let sel_title = scraper::Selector::parse(".video-title, .item-title a, .movie-title, h2").unwrap();
+    let sel_poster = scraper::Selector::parse(".video-img img, .thumbnail img, .cover img").unwrap();
+    let sel_actors = scraper::Selector::parse(".actress a, .actor-name, .seller-name").unwrap();
+    let sel_desc = scraper::Selector::parse(".description, .video-desc, .item-desc").unwrap();
+    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
+    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
+    let overview = doc.select(&sel_desc).next().map(|e| e.text().collect::<String>().trim().to_string());
+    Ok(ScrapeResult { source: "fc2ppvdb".into(), title, year: None, poster_url: poster, backdrop_url: None, overview, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 45 })
 }
 
 fn encode(s: &str) -> String {

@@ -5,10 +5,11 @@
     <el-tabs v-model="activeTab" type="border-card">
       <!-- 刮削源 -->
       <el-tab-pane label="刮削源" name="scrape">
-        <el-form label-width="120px" size="small">
-          <el-form-item label="刮削源">
-            <el-table :data="sourceTable" style="width:100%;" size="small" max-height="400" border resizable stripe>
+        <el-table :data="sourceTable" style="width:100%;" size="small" max-height="500" border resizable stripe>
               <el-table-column width="40">
+                <template #header>
+                  <el-checkbox :model-value="allChecked" :indeterminate="indeterminate" @change="toggleAllSources" />
+                </template>
                 <template #default="{ row }">
                   <el-checkbox :model-value="scrapeSources.includes(row.key)" @change="(v:boolean) => toggleSource(row.key, v)" />
                 </template>
@@ -26,21 +27,21 @@
                   </template>
                   <template v-else-if="row.key === 'jphoo'">
                     <el-input v-model="jphooSecret" type="password" show-password size="small" placeholder="secret" style="margin-bottom:2px;" />
-                    <el-input v-model="jphooRefresh" size="small" placeholder="refreshtoken" />
+                    <el-input v-model="jphooRefresh" size="small" placeholder="refreshtoken" style="margin-bottom:2px;" />
+                    <el-input v-model="jphooGuestId" size="small" placeholder="guestid (UUID)" />
                   </template>
                   <span v-else style="color:#666;font-size:11px;">无需</span>
                 </template>
               </el-table-column>
+              <el-table-column label="备注" min-width="160">
+                <template #default="{ row }">
+                  <el-input v-model="row.remark" size="small" :placeholder="row.defaultRemark||''" />
+                </template>
+              </el-table-column>
             </el-table>
-          </el-form-item>
-          <el-form-item label="视频扩展名">
-            <el-input v-model="videoExts" style="width: 400px;" placeholder="mp4,mkv,avi,mov,rmvb,flv,wmv,ts,iso,m2ts" />
-            <span style="font-size: 11px; color: #888; margin-left: 8px;">逗号分隔，扫描时仅收集这些格式</span>
-          </el-form-item>
-          <el-form-item>
+          <div style="margin-top:12px;">
             <el-button type="primary" @click="saveScrapeSettings">保存刮削设置</el-button>
-          </el-form-item>
-        </el-form>
+          </div>
       </el-tab-pane>
 
       <!-- 网络代理 -->
@@ -205,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, reactive } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -228,29 +229,36 @@ const videoExts = ref('')
 const tmdbApiKey = ref('')
 const jphooSecret = ref('')
 const jphooRefresh = ref('')
+const jphooGuestId = ref('')
 
-const sourceTable = [
-  { key: 'tmdb', name: 'TMDB', site: 'api.themoviedb.org', type: '通用', done: true },
-  { key: 'imdb', name: 'IMDb', site: 'www.imdb.com', type: '通用', done: true },
-  { key: 'douban', name: '豆瓣', site: 'movie.douban.com', type: '通用', done: true },
-  { key: 'javbus', name: 'JavBus', site: 'www.javbus.com', type: 'AV', done: true },
-  { key: 'javdb', name: 'JavDB', site: 'javdb.com', type: 'AV', done: true },
-  { key: 'javlibrary', name: 'JavLibrary', site: 'www.javlibrary.com', type: 'AV', done: true },
-  { key: 'fanza', name: 'Fanza', site: 'www.dmm.co.jp', type: 'AV', done: true },
-  { key: 'arzon', name: 'Arzon', site: 'www.arzon.jp', type: 'AV', done: true },
-  { key: 'mgstage', name: 'MGStage', site: 'www.mgstage.com', type: 'AV', done: true },
-  { key: 'fc2', name: 'FC2', site: 'adult.contents.fc2.com', type: 'AV', done: true },
-  { key: 'airav', name: 'Airav', site: 'www.airav.wiki', type: 'AV', done: false },
-  { key: 'xcity', name: 'XCITY', site: 'www.xcity.jp', type: 'AV', done: false },
-  { key: 'jav321', name: 'Jav321', site: 'www.jav321.com', type: 'AV', done: false },
-  { key: 'prestige', name: 'Prestige', site: 'www.prestige-av.com', type: 'AV', done: false },
-  { key: 'avsox', name: 'Avsox', site: 'avsox.cyou', type: 'AV', done: false },
-  { key: 'njav', name: 'Njav', site: 'njav.tv', type: 'AV', done: false },
-  { key: 'getav', name: 'GetAV', site: 'getav.info', type: 'AV', done: false },
-  { key: 'whostv', name: 'WhosTV', site: 'whostv.net', type: 'AV', done: false },
-  { key: 'jphoo', name: 'JpHoo', site: 'www.jphoo1.com', type: 'AV', done: true },
-  { key: 'fc2ppvdb', name: 'FC2PPVDB', site: 'fc2ppvdb.com', type: 'AV', done: false },
-]
+const sourceTable = reactive([
+  { key: 'tmdb', name: 'TMDB', site: 'api.themoviedb.org', type: '通用', done: true, remark: '', defaultRemark: '' },
+  { key: 'imdb', name: 'IMDb', site: 'www.imdb.com', type: '通用', done: true, remark: '', defaultRemark: '' },
+  { key: 'douban', name: '豆瓣', site: 'movie.douban.com', type: '通用', done: true, remark: '', defaultRemark: '' },
+  { key: 'javbus', name: 'JavBus', site: 'www.javbus.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'javdb', name: 'JavDB', site: 'javdb.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'javlibrary', name: 'JavLibrary', site: 'www.javlibrary.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'fanza', name: 'Fanza', site: 'www.dmm.co.jp', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'arzon', name: 'Arzon', site: 'www.arzon.jp', type: 'AV', done: true, remark: '', defaultRemark: '' },
+  { key: 'mgstage', name: 'MGStage', site: 'www.mgstage.com', type: 'AV', done: true, remark: '', defaultRemark: '' },
+  { key: 'fc2', name: 'FC2', site: 'adult.contents.fc2.com', type: 'AV', done: true, remark: '', defaultRemark: '' },
+  { key: 'airav', name: 'Airav', site: 'www.airav.wiki', type: 'AV', done: true, remark: '', defaultRemark: '可能需代理' },
+  { key: 'xcity', name: 'XCITY', site: 'www.xcity.jp', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'jav321', name: 'Jav321', site: 'www.jav321.com', type: 'AV', done: true, remark: '', defaultRemark: '站点不稳定' },
+  { key: 'prestige', name: 'Prestige', site: 'www.prestige-av.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'avsox', name: 'Avsox', site: 'avsox.cyou', type: 'AV', done: true, remark: '', defaultRemark: '可能需代理' },
+  { key: 'njav', name: 'Njav', site: 'njav.tv', type: 'AV', done: true, remark: '', defaultRemark: '可能需代理' },
+  { key: 'getav', name: 'GetAV', site: 'getav.info', type: 'AV', done: true, remark: '', defaultRemark: '可能需代理' },
+  { key: 'whostv', name: 'WhosTV', site: 'whostv.net', type: 'AV', done: true, remark: '', defaultRemark: '可能需代理' },
+  { key: 'jphoo', name: 'JpHoo', site: 'www.jphoo1.com', type: 'AV', done: true, remark: '', defaultRemark: '需配置secret/refreshtoken/guestid' },
+  { key: 'fc2ppvdb', name: 'FC2PPVDB', site: 'fc2ppvdb.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+])
+
+const allChecked = computed(() => sourceTable.every(r => scrapeSources.value.includes(r.key)))
+const indeterminate = computed(() => !allChecked.value && sourceTable.some(r => scrapeSources.value.includes(r.key)))
+function toggleAllSources(v: boolean) {
+  scrapeSources.value = v ? sourceTable.map(r => r.key) : []
+}
 
 function toggleSource(key: string, enabled: boolean) {
   if (enabled) { if (!scrapeSources.value.includes(key)) scrapeSources.value.push(key) }
@@ -350,10 +358,18 @@ async function doLogout() {
 
 async function saveScrapeSettings() {
   await invoke('set_config', { key: 'scrape_sources', value: JSON.stringify(scrapeSources.value) })
-  await invoke('set_config', { key: 'video_extensions', value: JSON.stringify(videoExts.value.split(',').map(s => s.trim()).filter(Boolean)) })
+  // Save remarks (user-editable)
+  const remarks: Record<string, string> = {}
+  sourceTable.forEach(r => { if (r.remark) remarks[r.key] = r.remark })
+  await invoke('set_config', { key: 'scrape_remarks', value: JSON.stringify(remarks) })
   if (tmdbApiKey.value) await invoke('set_secure_config', { key: 'tmdb_api_key', value: tmdbApiKey.value })
-  if (jphooSecret.value) await invoke('set_config', { key: 'jphoo_secret', value: jphooSecret.value })
-  if (jphooRefresh.value) await invoke('set_config', { key: 'jphoo_refreshtoken', value: jphooRefresh.value })
+  await invoke('set_config', { key: 'jphoo_secret', value: jphooSecret.value.trim() })
+  await invoke('set_config', { key: 'jphoo_refreshtoken', value: jphooRefresh.value.trim() })
+  await invoke('set_config', { key: 'jphoo_guestid', value: jphooGuestId.value.trim() })
+  // 验证保存结果
+  const savedSecret = await invoke('get_config', { key: 'jphoo_secret' })
+  const savedRefresh = await invoke('get_config', { key: 'jphoo_refreshtoken' })
+  console.log('JpHoo配置已保存: secret=' + (savedSecret ? (savedSecret as string).length + '字节' : '空') + ' refresh=' + (savedRefresh ? (savedRefresh as string).length + '字节' : '空'))
   ElMessage.success('刮削设置已保存')
 }
 
@@ -441,12 +457,18 @@ onMounted(async () => {
 
     jphooSecret.value = (await invoke('get_config', { key: 'jphoo_secret' }) as string) || ''
     jphooRefresh.value = (await invoke('get_config', { key: 'jphoo_refreshtoken' }) as string) || ''
+    jphooGuestId.value = (await invoke('get_config', { key: 'jphoo_guestid' }) as string) || ''
+    const remarks = (await invoke('get_config', { key: 'scrape_remarks' }) as string) || '{}'
+    try {
+      const rm: Record<string, string> = JSON.parse(remarks)
+      sourceTable.forEach(r => { if (rm[r.key]) r.remark = rm[r.key] })
+    } catch { /* ignore */ }
   } catch { /* config may not exist yet */ }
 })
 </script>
 
 <style scoped>
-.settings-page { max-width: 760px; }
+.settings-page { width: 100%; }
 h2 { font-size: 20px; margin-bottom: 16px; }
 h3 { font-size: 15px; margin-bottom: 12px; color: #e0e0e0; }
 .danger-zone { }
