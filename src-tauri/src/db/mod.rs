@@ -65,7 +65,19 @@ fn run_migrations(conn: &Connection) {
             .unwrap_or(false);
 
         if !exists {
-            conn.execute_batch(sql).expect(&format!("迁移 {} 失败", version));
+            // Execute each statement individually, ignoring "duplicate column" errors
+            for stmt in sql.split(';') {
+                let stmt = stmt.trim();
+                if stmt.is_empty() { continue; }
+                if let Err(e) = conn.execute(stmt, []) {
+                    let msg = e.to_string().to_lowercase();
+                    if msg.contains("duplicate column") || msg.contains("already exists") {
+                        log::warn!("迁移 {}: 跳过重复语句 ({})", version, &stmt[..stmt.len().min(60)]);
+                    } else {
+                        panic!("迁移 {} 失败: {} | SQL: {}", version, e, &stmt[..stmt.len().min(80)]);
+                    }
+                }
+            }
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
