@@ -10,6 +10,8 @@ export interface FileItem {
 export interface MovieItem {
   file_id: string;
   title: string;
+  original_title?: string | null;
+  chinese_name?: string | null;
   year: number | null;
   poster_local: string | null;
   rating: number | null;

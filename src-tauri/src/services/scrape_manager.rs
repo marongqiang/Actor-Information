@@ -97,14 +97,27 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
 pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResult<()> {
     let now = db::now_ts();
 
-    // Download poster if URL exists and no local cache yet
+    // Get file_name to derive the movie code for folder naming
+    let file_name: String = db::with_db(|conn| {
+        conn.query_row("SELECT file_name FROM movies WHERE file_id=?1", [file_id], |r| r.get(0))
+            .map_err(|e| CommandError::db(&e.to_string()))
+    }).unwrap_or_default();
+    let parsed = filename_parser::parse_filename(&file_name);
+    let code = parsed.id_number.as_deref().unwrap_or(&parsed.cleaned).to_string();
+
+    // Download poster — save to images/posters/{code}/poster.jpg
     let mut poster_local = None;
     if let Some(ref poster_url) = result.poster_url {
         if poster_url.starts_with("http") {
-            let images_dir = db::get_data_dir().join("images").join("posters");
-            let _ = std::fs::create_dir_all(&images_dir);
-            let filename = format!("{}.jpg", &file_id[..file_id.len().min(16)]);
-            let filepath = images_dir.join(&filename);
+            let code_dir = db::get_data_dir().join("images").join("posters").join(&code);
+            let _ = std::fs::create_dir_all(&code_dir);
+            // Determine extension from URL or default to jpg
+            let ext = poster_url.rsplit('.').next().and_then(|e| {
+                let e = e.split('?').next().unwrap_or("jpg");
+                if e.len() <= 4 && e.chars().all(|c| c.is_ascii_alphabetic()) { Some(e) } else { None }
+            }).unwrap_or("jpg");
+            let filename = format!("poster.{}", ext);
+            let filepath = code_dir.join(&filename);
             log::info!("下载海报: {} -> {}", poster_url, filepath.display());
             match get_client().get(poster_url).send() {
                 Ok(resp) => {
@@ -123,9 +136,11 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
         }
     }
 
+    // Save scraped info — title goes to original_title, never overwrite the filename-based title
     db::with_db(|conn| {
-        conn.execute("UPDATE movies SET title=?1,year=?2,poster_url=?3,poster_local=COALESCE(?4,poster_local),overview=?5,rating=?6,runtime=?7,director=?8,genre=?9,scrape_status=2,updated_at=?10 WHERE file_id=?11",
-            rusqlite::params![result.title,result.year,result.poster_url,poster_local,result.overview,result.rating,result.runtime,result.director,
+        conn.execute(
+            "UPDATE movies SET original_title=?1,year=?2,poster_url=?3,poster_local=COALESCE(?4,poster_local),overview=?5,rating=?6,runtime=?7,director=?8,genre=?9,scrape_status=2,updated_at=?10 WHERE file_id=?11",
+            rusqlite::params![result.title, result.year, result.poster_url, poster_local, result.overview, result.rating, result.runtime, result.director,
                 result.genre.as_ref().map(|g| serde_json::to_string(g).unwrap_or_default()), now, file_id])?;
         if let Some(actors) = &result.actors {
             for name in actors {

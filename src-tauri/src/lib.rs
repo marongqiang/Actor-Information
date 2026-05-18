@@ -65,6 +65,7 @@ pub fn run() {
             commands::library::batch_action,
             commands::library::hide_movies,
             commands::library::unhide_movies,
+            commands::library::set_movie_chinese_name,
             commands::library::batch_set_scrape_status,
             commands::library::get_actress_movies,
             // Groups
@@ -115,6 +116,7 @@ pub fn run() {
             commands::config::read_image_base64,
             commands::config::list_folder_images,
             commands::config::update_metatube_sdk,
+            commands::config::translate_text,
             // Task
             commands::task::get_pending_tasks,
             commands::task::resume_task,

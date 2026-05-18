@@ -73,6 +73,38 @@ pub fn list_folder_images(dir_path: String) -> Result<Vec<String>, crate::utils:
     Ok(files)
 }
 
+/// Translate text using Google Translate (free, no API key needed)
+#[tauri::command]
+pub fn translate_text(text: String) -> Result<String, crate::utils::error::CommandError> {
+    let url = format!(
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q={}",
+        encode_uri(&text)
+    );
+    let resp = reqwest::blocking::get(&url)
+        .map_err(|e| crate::utils::error::CommandError::network(&e.to_string()))?;
+    let body = resp.text()
+        .map_err(|e| crate::utils::error::CommandError::network(&e.to_string()))?;
+    // Parse Google Translate response: [[["translated text","original",...]],...]
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| crate::utils::error::CommandError::internal(&format!("翻译解析失败: {}", e)))?;
+    let result = json[0][0][0].as_str()
+        .unwrap_or(&text)
+        .to_string();
+    Ok(result)
+}
+
+fn encode_uri(s: &str) -> String {
+    let mut result = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+            result.push(b as char);
+        } else {
+            result.push_str(&format!("%{:02X}", b));
+        }
+    }
+    result
+}
+
 /// Update MetaTube SDK: git pull + go build
 #[tauri::command]
 pub fn update_metatube_sdk() -> Result<String, crate::utils::error::CommandError> {

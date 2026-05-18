@@ -106,7 +106,7 @@ pub fn get_movies_paginated(
     // Fetch page
     let offset = (page - 1) * page_size;
     let query_sql = format!(
-        "SELECT m.file_id, m.title, m.year, m.poster_local, m.rating, m.genre, m.is_hidden,
+        "SELECT m.file_id, m.title, m.original_title, m.chinese_name, m.year, m.poster_local, m.rating, m.genre, m.is_hidden,
                 COALESCE(p.progress, 0), COALESCE(p.duration, 0),
                 COALESCE(m.scrape_status, 0)
          FROM movies m
@@ -129,14 +129,16 @@ pub fn get_movies_paginated(
         Ok(MovieRow {
             file_id: row.get(0)?,
             title: row.get(1)?,
-            year: row.get(2)?,
-            poster_local: row.get(3)?,
-            rating: row.get(4)?,
-            genre: row.get(5)?,
-            is_hidden: row.get::<_, i32>(6)? != 0,
-            progress: row.get(7)?,
-            duration: row.get(8)?,
-            scrape_status: row.get(9)?,
+            original_title: row.get(2)?,
+            chinese_name: row.get(3)?,
+            year: row.get(4)?,
+            poster_local: row.get(5)?,
+            rating: row.get(6)?,
+            genre: row.get(7)?,
+            is_hidden: row.get::<_, i32>(8)? != 0,
+            progress: row.get(9)?,
+            duration: row.get(10)?,
+            scrape_status: row.get(11)?,
         })
     })?.filter_map(|r| r.ok()).collect();
 
@@ -146,6 +148,8 @@ pub fn get_movies_paginated(
 pub struct MovieRow {
     pub file_id: String,
     pub title: String,
+    pub original_title: Option<String>,
+    pub chinese_name: Option<String>,
     pub year: Option<i32>,
     pub poster_local: Option<String>,
     pub rating: Option<f64>,

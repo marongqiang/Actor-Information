@@ -26,6 +26,16 @@
         <el-table-column type="selection" width="40" />
         <el-table-column prop="title" label="片名" width="180" sortable="custom" fixed="left" show-overflow-tooltip />
         <el-table-column prop="original_title" label="原名" width="160" sortable="custom" show-overflow-tooltip />
+        <el-table-column label="中文名" width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.chinese_name">{{ row.chinese_name }}</span>
+            <span v-else-if="row.original_title" style="display:flex;align-items:center;gap:6px;">
+              <span style="color:#666;font-size:11px;">无</span>
+              <el-button size="small" text type="primary" @click.stop="translateAndSave(row)">翻译</el-button>
+            </span>
+            <span v-else style="color:#666;font-size:11px;">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="year" label="年份" width="70" sortable="custom" />
         <el-table-column prop="rating" label="评分" width="70" sortable="custom">
           <template #default="{ row }">{{ row.rating ? '★'+row.rating.toFixed(1) : '-' }}</template>
@@ -127,6 +137,20 @@ function formatSize(bytes: number) {
   let i = 0; let s = bytes
   while (s > 1024 && i < units.length - 1) { s /= 1024; i++ }
   return s.toFixed(1) + ' ' + units[i]
+}
+
+async function translateAndSave(row: MovieItem) {
+  if (!row.original_title) return
+  try {
+    const cn = await invoke('translate_text', { text: row.original_title }) as string
+    if (cn && cn !== row.original_title) {
+      await invoke('set_movie_chinese_name', { fileId: row.file_id, chineseName: cn })
+      row.chinese_name = cn
+      ElMessage.success('翻译完成: ' + cn)
+    }
+  } catch (e: any) {
+    ElMessage.error('翻译失败: ' + (e?.message || e))
+  }
 }
 
 function doSearch() { page.value = 1; fetchData() }
