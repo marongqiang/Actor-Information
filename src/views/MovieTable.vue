@@ -43,7 +43,6 @@
         <el-table-column prop="runtime" label="时长" width="75" sortable="custom">
           <template #default="{ row }">{{ row.runtime ? row.runtime+'分' : '-' }}</template>
         </el-table-column>
-        <el-table-column prop="director" label="导演" width="120" sortable="custom" show-overflow-tooltip />
         <el-table-column prop="genre" label="类型" width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ (row.genre || []).join(', ') }}</template>
         </el-table-column>

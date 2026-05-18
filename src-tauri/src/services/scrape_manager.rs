@@ -160,8 +160,8 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
     // Save scraped info — title goes to original_title, never overwrite the filename-based title
     db::with_db(|conn| {
         conn.execute(
-            "UPDATE movies SET original_title=?1,year=?2,poster_url=?3,poster_local=COALESCE(?4,poster_local),overview=?5,rating=?6,runtime=?7,director=?8,genre=?9,scrape_status=2,updated_at=?10 WHERE file_id=?11",
-            rusqlite::params![result.title, result.year, result.poster_url, poster_local, result.overview, result.rating, result.runtime, result.director,
+            "UPDATE movies SET original_title=?1,year=?2,poster_url=?3,poster_local=COALESCE(?4,poster_local),overview=?5,rating=?6,runtime=?7,genre=?8,scrape_status=2,updated_at=?9 WHERE file_id=?10",
+            rusqlite::params![result.title, result.year, result.poster_url, poster_local, result.overview, result.rating, result.runtime,
                 result.genre.as_ref().map(|g| serde_json::to_string(g).unwrap_or_default()), now, file_id])?;
         if let Some(actors) = &result.actors {
             for name in actors {
