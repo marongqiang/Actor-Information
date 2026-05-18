@@ -512,7 +512,7 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    log::info!("JpHoo API响应: {}", &body[..body.len().min(500)]);
+    log::info!("JpHoo API响应: {}", truncate_log(&body, 500));
 
     let json_str = body.find('{').map(|i| &body[i..]).unwrap_or(&body);
     let json: serde_json::Value = serde_json::from_str(json_str)
