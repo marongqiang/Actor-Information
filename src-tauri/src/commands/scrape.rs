@@ -1,7 +1,6 @@
 use crate::services::scrape_manager;
 use crate::utils::error::{CommandError, CommandResult};
 use serde::Serialize;
-use tauri::Emitter;
 
 #[derive(Serialize)]
 pub struct BatchScrapeResult {
@@ -11,20 +10,21 @@ pub struct BatchScrapeResult {
 }
 
 #[derive(Clone, serde::Serialize)]
-struct ScrapeProgress {
-    current: usize,
-    total: usize,
-    success: usize,
-    failed: usize,
-    file_name: String,
+pub struct ScrapeProgress {
+    pub current: usize,
+    pub total: usize,
+    pub success: usize,
+    pub failed: usize,
+    pub file_name: String,
 }
 
 #[tauri::command]
-pub async fn scrape_batch(app_handle: tauri::AppHandle, file_ids: Vec<String>) -> Result<BatchScrapeResult, crate::utils::error::CommandError> {
+pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, crate::utils::error::CommandError> {
+    log::info!("scrape_batch 被调用: {} 个文件", file_ids.len());
     let sources: Vec<String> = crate::db::with_db(|conn| crate::db::queries::get_config(conn, "scrape_sources"))
         .ok().flatten()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| vec!["tmdb".into(), "javbus".into()]);
+        .unwrap_or_else(|| vec!["metatube".into(), "javbus".into()]);
 
     let total = file_ids.len();
 
@@ -46,6 +46,8 @@ pub async fn scrape_batch(app_handle: tauri::AppHandle, file_ids: Vec<String>) -
                     .map_err(|e| CommandError::db(&e.to_string()))
             }).unwrap_or_default();
 
+            log::info!("[{}/{}] 刮削 {} ...", i+1, total, file_name);
+
             match scrape_manager::scrape_file(fid, &sources) {
                 Ok(results) if !results.is_empty() => {
                     match scrape_manager::apply_scrape_result(fid, &results[0]) {
@@ -55,14 +57,6 @@ pub async fn scrape_batch(app_handle: tauri::AppHandle, file_ids: Vec<String>) -
                 }
                 _ => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
             }
-
-            let _ = app_handle.emit("scrape-progress", ScrapeProgress {
-                current: i + 1,
-                total,
-                success,
-                failed,
-                file_name,
-            });
 
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
