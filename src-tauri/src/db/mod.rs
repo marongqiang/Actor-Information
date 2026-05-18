@@ -72,9 +72,9 @@ fn run_migrations(conn: &Connection) {
                 if let Err(e) = conn.execute(stmt, []) {
                     let msg = e.to_string().to_lowercase();
                     if msg.contains("duplicate column") || msg.contains("already exists") {
-                        log::warn!("迁移 {}: 跳过重复语句 ({})", version, &stmt[..stmt.len().min(60)]);
+                        log::warn!("迁移 {}: 跳过重复语句", version);
                     } else {
-                        panic!("迁移 {} 失败: {} | SQL: {}", version, e, &stmt[..stmt.len().min(80)]);
+                        panic!("迁移 {} 失败: {} | SQL前80字节: {}", version, e, truncate_str(stmt, 80));
                     }
                 }
             }
@@ -136,6 +136,13 @@ where
 {
     let guard = DB.lock().map_err(|e| crate::utils::error::CommandError::internal(&format!("数据库锁失败: {}", e)))?;
     f(&guard)
+}
+
+fn truncate_str(s: &str, max: usize) -> &str {
+    if s.len() <= max { return s; }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    &s[..end]
 }
 
 pub fn now_ts() -> i64 {
