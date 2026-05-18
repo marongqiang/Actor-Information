@@ -64,7 +64,7 @@ pub async fn scrape_batch(app_handle: tauri::AppHandle, file_ids: Vec<String>) -
                 file_name,
             });
 
-            std::thread::sleep(std::time::Duration::from_millis(600));
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
         (success, failed)
     }).await.map_err(|e| crate::utils::error::CommandError::internal(&e.to_string()))?;

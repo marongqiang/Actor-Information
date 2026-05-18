@@ -22,7 +22,7 @@ pub struct ScrapeResult {
 fn build_scrape_client() -> reqwest::blocking::Client {
     let mut builder = reqwest::blocking::Client::builder()
         .cookie_store(true)
-        .timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(8))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0");
 
     // Check proxy config
@@ -58,10 +58,23 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
     let parsed = filename_parser::parse_filename(&file_name);
     let query = parsed.id_number.as_deref().unwrap_or(&parsed.cleaned);
 
+    // Priority order: metatube (covers 39 providers) → others
+    // Sort sources: metatube first, then others
+    let mut ordered_sources: Vec<&String> = sources.iter().collect();
+    ordered_sources.sort_by_key(|s| if s.as_str() == "metatube" { 0 } else { 1 });
+
     let mut results = Vec::new();
-    for source in sources {
+    let mut got_metatube = false;
+    for source in ordered_sources {
+        // After metatube succeeds, skip other sources (metatube covers 39 providers)
+        if got_metatube && source.as_str() != "metatube" {
+            log::debug!("刮削 {}: 跳过(MetaTube已成功)", source);
+            continue;
+        }
+
         log::info!("刮削 {}: 开始查询 [{}]", source, query);
         let r = match source.as_str() {
+            "metatube" => scrape_metatube(query),
             "tmdb" => scrape_tmdb(query),
             "imdb" => scrape_imdb(query),
             "douban" => scrape_douban(query),
@@ -82,11 +95,14 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             "getav" => scrape_getav(query),
             "whostv" => scrape_whostv(query),
             "fc2ppvdb" => scrape_fc2ppvdb(query),
-            "metatube" => scrape_metatube(query),
             _ => { log::debug!("刮削源 {} 未实现", source); continue; }
         };
         match &r {
-            Ok(res) => { log::info!("刮削 {}: 成功, title={}", source, res.title); results.push(r.unwrap()); }
+            Ok(res) => {
+                log::info!("刮削 {}: 成功, title={}", source, res.title);
+                if source.as_str() == "metatube" { got_metatube = true; }
+                results.push(r.unwrap());
+            }
             Err(e) => log::warn!("刮削 {}: 失败 - {}", source, e),
         }
     }
@@ -820,7 +836,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     let search_url = format!("{}/v1/movies/search?q={}&fallback=true", base, encode(query));
     log::info!("MetaTube 搜索: {}", search_url);
     let resp = get_client().get(&search_url)
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(10))
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
@@ -864,7 +880,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     if !provider_name.is_empty() && !movie_id.is_empty() {
         let info_url = format!("{}/v1/movies/{}/{}", base, provider_name, movie_id);
         log::info!("MetaTube 详情: {}", info_url);
-        match get_client().get(&info_url).timeout(std::time::Duration::from_secs(15)).send() {
+        match get_client().get(&info_url).timeout(std::time::Duration::from_secs(8)).send() {
             Ok(resp) => {
                 if let Ok(body2) = resp.text() {
                     log::info!("MetaTube 详情响应: {}", truncate_log(&body2, 300));
