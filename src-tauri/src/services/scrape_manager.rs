@@ -20,12 +20,26 @@ pub struct ScrapeResult {
 }
 
 fn build_scrape_client() -> reqwest::blocking::Client {
-    let builder = reqwest::blocking::Client::builder()
+    let mut builder = reqwest::blocking::Client::builder()
         .cookie_store(true)
         .timeout(std::time::Duration::from_secs(8))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0");
-    // Note: no proxy on this client. It only calls MetaTube on localhost.
-    // MetaTube server itself gets proxy via environment variables for external requests.
+
+    // Check proxy config
+    if let Ok(Some(enabled)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_enabled")) {
+        if enabled == "true" {
+            if let Ok(Some(host)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_host")) {
+                let port = db::with_db(|c| crate::db::queries::get_config(c, "proxy_port"))
+                    .ok().flatten().and_then(|p| p.parse().ok()).unwrap_or(1080);
+                let proxy_url = format!("http://{}:{}", host, port);
+                if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+                    let proxy = proxy.no_proxy(reqwest::NoProxy::from_string("localhost,127.0.0.1,::1"));
+                    builder = builder.proxy(proxy);
+                    log::info!("刮削使用代理: {} (本地地址直连)", proxy_url);
+                }
+            }
+        }
+    }
     builder.build().expect("Failed to build scrape client")
 }
 
