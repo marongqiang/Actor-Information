@@ -240,9 +240,18 @@ pub fn unhide_movies(file_ids: Vec<String>) -> Result<(), CommandError> {
 
 // ─── Genre Translation Library ───
 
+#[derive(serde::Serialize)]
+pub struct GenreTranslation {
+    pub ja_name: String,
+    pub cn_name: String,
+}
+
 #[tauri::command]
-pub fn get_genre_translations() -> Result<Vec<(String, String)>, CommandError> {
-    db::with_db(|conn| queries::get_all_genre_translations(conn))
+pub fn get_genre_translations() -> Result<Vec<GenreTranslation>, CommandError> {
+    db::with_db(|conn| {
+        let rows = queries::get_all_genre_translations(conn)?;
+        Ok(rows.into_iter().map(|(ja_name, cn_name)| GenreTranslation { ja_name, cn_name }).collect())
+    })
 }
 
 #[tauri::command]
