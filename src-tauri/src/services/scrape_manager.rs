@@ -199,32 +199,63 @@ fn auto_translate_movie(file_id: &str, title: &str, genres: Option<&[String]>) {
 }
 
 fn auto_translate_genres(file_id: &str, genres: &[String]) {
-    let list = genres.join(", ");
-    let deepseek_key = crate::services::secure_config::get_secure_config("deepseek_api_key")
-        .ok().flatten().unwrap_or_default();
+    let mut translated = Vec::new();
+    let mut missing = Vec::new();
 
-    let prompt = format!(
-        "将以下日本AV影片的类型标签翻译成简体中文，每个标签一行，保持顺序：\n{}",
-        list
-    );
-
-    let cn_list = if !deepseek_key.is_empty() {
-        translate_via_deepseek(&prompt, &deepseek_key)
-    } else {
-        None
-    }.or_else(|| translate_via_google(&prompt));
-
-    if let Some(cn_list) = cn_list {
-        let translated: Vec<String> = cn_list.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-        if !translated.is_empty() && translated.len() == genres.len() {
-            let json = serde_json::to_string(&translated).unwrap_or_default();
-            let _ = db::with_db(|conn| {
-                conn.execute("UPDATE movies SET genre=?1 WHERE file_id=?2",
-                    rusqlite::params![json, file_id])?;
-                Ok(())
-            });
-            log::info!("类型翻译完成: {:?} -> {:?}", genres, translated);
+    // Step 1: Check translation library
+    for g in genres {
+        if let Ok(Some(cn)) = db::with_db(|conn| crate::db::queries::get_genre_translation(conn, g)) {
+            translated.push(cn);
+        } else {
+            translated.push(String::new()); // placeholder
+            missing.push(g.clone());
         }
+    }
+
+    // Step 2: Translate missing ones via API
+    if !missing.is_empty() {
+        let list = missing.join(", ");
+        let deepseek_key = crate::services::secure_config::get_secure_config("deepseek_api_key")
+            .ok().flatten().unwrap_or_default();
+
+        let prompt = format!(
+            "将以下日本AV影片的类型标签翻译成简体中文，每个标签一行，保持顺序：\n{}",
+            list
+        );
+
+        let cn_list = if !deepseek_key.is_empty() {
+            translate_via_deepseek(&prompt, &deepseek_key)
+        } else {
+            None
+        }.or_else(|| translate_via_google(&prompt));
+
+        if let Some(cn_list) = cn_list {
+            let api_translated: Vec<String> = cn_list.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            // Fill in translated values and save to library
+            let mut mi = 0;
+            for (i, g) in genres.iter().enumerate() {
+                if translated[i].is_empty() && mi < api_translated.len() {
+                    translated[i] = api_translated[mi].clone();
+                    // Save to library
+                    let _ = db::with_db(|conn| {
+                        crate::db::queries::set_genre_translation(conn, g, &api_translated[mi])
+                    });
+                    mi += 1;
+                }
+            }
+        }
+    }
+
+    // Step 3: Save to movie (only if we have all translations)
+    let final_genres: Vec<String> = translated.iter().filter(|s| !s.is_empty()).cloned().collect();
+    if !final_genres.is_empty() {
+        let json = serde_json::to_string(&final_genres).unwrap_or_default();
+        let _ = db::with_db(|conn| {
+            conn.execute("UPDATE movies SET genre=?1 WHERE file_id=?2",
+                rusqlite::params![json, file_id])?;
+            Ok(())
+        });
+        log::info!("类型翻译: {:?} -> {:?}", genres, final_genres);
     }
 }
 

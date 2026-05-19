@@ -237,3 +237,15 @@ pub fn unhide_movies(file_ids: Vec<String>) -> Result<(), CommandError> {
         Ok(())
     })
 }
+
+// ─── Genre Translation Library ───
+
+#[tauri::command]
+pub fn get_genre_translations() -> Result<Vec<(String, String)>, CommandError> {
+    db::with_db(|conn| queries::get_all_genre_translations(conn))
+}
+
+#[tauri::command]
+pub fn set_genre_translation(ja_name: String, cn_name: String) -> Result<(), CommandError> {
+    db::with_db(|conn| queries::set_genre_translation(conn, &ja_name, &cn_name))
+}

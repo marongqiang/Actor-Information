@@ -255,6 +255,30 @@ pub fn set_config(conn: &Connection, key: &str, value: &str) -> CommandResult<()
     Ok(())
 }
 
+// ─── Genre Translation Library ───
+
+pub fn get_genre_translation(conn: &Connection, ja_name: &str) -> CommandResult<Option<String>> {
+    conn.query_row("SELECT cn_name FROM genre_translations WHERE ja_name=?1", [ja_name], |r| r.get(0))
+        .optional()
+        .map_err(|e| CommandError::db(&e.to_string()))
+}
+
+pub fn set_genre_translation(conn: &Connection, ja_name: &str, cn_name: &str) -> CommandResult<()> {
+    let now = crate::db::now_ts();
+    conn.execute(
+        "INSERT OR REPLACE INTO genre_translations (ja_name, cn_name, updated_at) VALUES (?1, ?2, ?3)",
+        params![ja_name, cn_name, now],
+    )?;
+    Ok(())
+}
+
+pub fn get_all_genre_translations(conn: &Connection) -> CommandResult<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT ja_name, cn_name FROM genre_translations ORDER BY ja_name")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
 pub fn get_all_config(conn: &Connection) -> CommandResult<Vec<(String, String)>> {
     let mut stmt = conn.prepare("SELECT key, value FROM config WHERE value IS NOT NULL")?;
     let rows = stmt.query_map([], |row| {

@@ -214,6 +214,29 @@
         </el-button>
         <p v-if="metaTubeResult" style="margin-top:8px; font-size:12px; color:#67c23a; white-space:pre-wrap;">{{ metaTubeResult }}</p>
         <p v-if="metaTubeError" style="margin-top:8px; font-size:12px; color:#f56c6c;">{{ metaTubeError }}</p>
+
+        <!-- 标签翻译库 -->
+        <h3 style="margin-top:24px;">标签翻译库</h3>
+        <div style="margin-bottom:8px; font-size:12px; color:#9090a0;">日文标签 → 中文翻译，双击中文列可编辑</div>
+        <el-table :data="genreLib" size="small" max-height="300" style="width:100%;" @cell-dblclick="editGenreCell">
+          <el-table-column prop="ja_name" label="日文" width="200" />
+          <el-table-column label="中文" width="200">
+            <template #default="{ row, $index }">
+              <el-input v-if="editingGenre === $index" v-model="row.cn_name" size="small" @blur="saveGenreRow(row)" @keyup.enter="saveGenreRow(row)" />
+              <span v-else style="cursor:pointer;">{{ row.cn_name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="80">
+            <template #default="{ row }">
+              <el-button size="small" text type="danger" @click="deleteGenreRow(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div style="margin-top:8px; display:flex; gap:8px;">
+          <el-input v-model="newGenreJa" size="small" placeholder="日文标签" style="width:160px;" @keyup.enter="addGenreRow" />
+          <el-input v-model="newGenreCn" size="small" placeholder="中文翻译" style="width:160px;" @keyup.enter="addGenreRow" />
+          <el-button size="small" @click="addGenreRow">添加</el-button>
+        </div>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -320,6 +343,38 @@ async function updateMetaTube() {
   } catch (e: any) {
     metaTubeError.value = String(e?.message || e)
   } finally { metaTubeLoading.value = false }
+}
+
+// Genre translation library
+interface GenreRow { ja_name: string; cn_name: string }
+const genreLib = ref<GenreRow[]>([])
+const newGenreJa = ref('')
+const newGenreCn = ref('')
+const editingGenre = ref<number | null>(null)
+
+async function loadGenreLib() {
+  try { genreLib.value = await invoke('get_genre_translations') as any[] || [] }
+  catch { genreLib.value = [] }
+}
+function editGenreCell(row: any, _col: any, _cell: any, _event: any) {
+  editingGenre.value = genreLib.value.indexOf(row)
+}
+async function saveGenreRow(row: GenreRow) {
+  editingGenre.value = null
+  if (row.ja_name && row.cn_name) {
+    await invoke('set_genre_translation', { jaName: row.ja_name, cnName: row.cn_name })
+  }
+}
+async function deleteGenreRow(row: GenreRow) {
+  await invoke('set_genre_translation', { jaName: row.ja_name, cnName: '' })
+  genreLib.value = genreLib.value.filter(r => r.ja_name !== row.ja_name)
+}
+async function addGenreRow() {
+  if (newGenreJa.value && newGenreCn.value) {
+    await invoke('set_genre_translation', { jaName: newGenreJa.value, cnName: newGenreCn.value })
+    genreLib.value.push({ ja_name: newGenreJa.value, cn_name: newGenreCn.value })
+    newGenreJa.value = ''; newGenreCn.value = ''
+  }
 }
 
 // ─── QR Code Login ───
@@ -497,6 +552,7 @@ onMounted(async () => {
     jphooSecret.value = (await invoke('get_config', { key: 'jphoo_secret' }) as string) || ''
     jphooRefresh.value = (await invoke('get_config', { key: 'jphoo_refreshtoken' }) as string) || ''
     jphooGuestId.value = (await invoke('get_config', { key: 'jphoo_guestid' }) as string) || ''
+    loadGenreLib()
     const remarks = (await invoke('get_config', { key: 'scrape_remarks' }) as string) || '{}'
     try {
       const rm: Record<string, string> = JSON.parse(remarks)

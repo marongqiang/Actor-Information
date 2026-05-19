@@ -69,6 +69,8 @@ pub fn run() {
             commands::library::hide_movies,
             commands::library::unhide_movies,
             commands::library::set_movie_chinese_name,
+            commands::library::get_genre_translations,
+            commands::library::set_genre_translation,
             commands::library::batch_set_scrape_status,
             commands::library::get_actress_movies,
             // Groups
