@@ -1062,9 +1062,8 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
         return Err(CommandError::scrape_failed("MetaTube 所有源均无有效数据"));
     }
 
-    // Step 3: If data is incomplete, try rich providers directly by normalized ID
-    let incomplete = all_actors.is_empty() || all_genres.is_empty() || best_runtime.is_none() || best_overview.is_none();
-    if incomplete {
+    // Step 3: Always try rich providers for genres/actors/runtime boost
+    {
         let code_lower = query.trim().to_lowercase().replace(['-', '_', ' '], "");
         let fallback_providers = ["FANZA", "JAV321", "MGS"];
         for &fb_name in &fallback_providers {
