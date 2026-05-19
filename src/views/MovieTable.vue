@@ -69,6 +69,17 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="刮削开始" width="140" sortable="custom" prop="scrape_started_at">
+          <template #default="{ row }">{{ row.scrape_started_at ? new Date(row.scrape_started_at * 1000).toLocaleString() : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="刮削结束" width="140" sortable="custom" prop="scrape_finished_at">
+          <template #default="{ row }">{{ row.scrape_finished_at ? new Date(row.scrape_finished_at * 1000).toLocaleString() : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="scrape_error" label="失败原因" width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span :style="{ color: row.scrape_status === 3 ? '#f56c6c' : '#666' }">{{ row.scrape_error || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="is_hidden" label="隐藏" width="70" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="row.is_hidden ? 'danger' : 'success'" size="small">{{ row.is_hidden ? '是' : '否' }}</el-tag>
@@ -181,13 +192,33 @@ async function batchScrape() {
   const ids = selectedRows.value.map(r => r.file_id)
   scrapeDialog.value = true; scrapePct.value = 0; scrapeDone.value = false
   scrapeText.value = `正在刮削 ${ids.length} 部影片...`; scrapeOk.value = 0; scrapeFail.value = 0
+
+  // Start scrape in background, poll progress
+  const scrapePromise = invoke('scrape_batch', { fileIds: ids })
+  const pollTimer = setInterval(async () => {
+    try {
+      const stats: any = await invoke('get_scrape_stats')
+      const done = stats.success + stats.failed
+      const selTotal = ids.length
+      if (done > 0) {
+        scrapePct.value = Math.round(done / selTotal * 100)
+        scrapeOk.value = stats.success
+        scrapeFail.value = stats.failed
+        scrapeText.value = `[${done}/${selTotal}] 成功${stats.success} 失败${stats.failed}`
+        doSearch() // refresh table to show per-row status changes
+      }
+    } catch { /* ignore poll errors */ }
+  }, 1000)
+
   try {
-    const result: any = await invoke('scrape_batch', { fileIds: ids })
+    const result: any = await scrapePromise
+    clearInterval(pollTimer)
     scrapePct.value = 100; scrapeDone.value = true
     scrapeOk.value = result.success; scrapeFail.value = result.failed
     scrapeText.value = `刮削完成: 成功${result.success} 失败${result.failed}`
     doSearch()
   } catch(e: any) {
+    clearInterval(pollTimer)
     scrapeDialog.value = false
     ElMessage.error('刮削失败: ' + (e?.message || e))
   }

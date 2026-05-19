@@ -36,11 +36,13 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
     let total = file_ids.len();
     let app_handle = APP_HANDLE.get().cloned();
 
-    // Mark all as scraping
+    // Mark all as pending + set started_at
+    let now = crate::db::now_ts();
     for fid in &file_ids {
         let fid2 = fid.clone();
         crate::db::with_db(move |conn| {
-            conn.execute("UPDATE movies SET scrape_status=1 WHERE file_id=?1", [fid2.as_str()])?;
+            conn.execute("UPDATE movies SET scrape_status=1, scrape_started_at=?1, scrape_error=NULL WHERE file_id=?2",
+                rusqlite::params![now, fid2.as_str()])?;
             Ok(())
         }).ok();
     }
@@ -56,15 +58,26 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
 
             log::info!("[{}/{}] 刮削 {} ...", i+1, total, file_name);
 
-            match scrape_manager::scrape_file(fid, &sources) {
+            let (ok, err_msg) = match scrape_manager::scrape_file(fid, &sources) {
                 Ok(results) if !results.is_empty() => {
                     match scrape_manager::apply_scrape_result(fid, &results[0]) {
-                        Ok(_) => success += 1,
-                        Err(_) => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
+                        Ok(_) => (true, None),
+                        Err(e) => (false, Some(format!("{}", e))),
                     }
                 }
-                _ => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
-            }
+                Err(e) => (false, Some(format!("{}", e))),
+                _ => (false, Some("无结果".into())),
+            };
+            if ok { success += 1; } else { failed += 1; }
+            let finished = crate::db::now_ts();
+            let fid2 = fid.clone();
+            let err2 = err_msg.clone();
+            crate::db::with_db(move |c| {
+                let st: i32 = if ok { 2 } else { 3 };
+                c.execute("UPDATE movies SET scrape_status=?1, scrape_finished_at=?2, scrape_error=?3 WHERE file_id=?4",
+                    rusqlite::params![st, finished, err2, fid2.as_str()])?;
+                Ok(())
+            }).ok();
 
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit("scrape-progress", ScrapeProgress {
@@ -104,3 +117,22 @@ pub async fn start_scrape(_file_ids: Vec<String>) -> Result<String, crate::utils
     Ok(TestSourceResult { status: resp.status().as_u16(), time_ms: start.elapsed().as_millis() as u64 })
 }
 #[derive(Serialize)] pub struct TestSourceResult { pub status: u16, pub time_ms: u64 }
+
+#[derive(Serialize)]
+pub struct ScrapeStats {
+    pub pending: i64,
+    pub success: i64,
+    pub failed: i64,
+    pub total: i64,
+}
+
+#[tauri::command]
+pub fn get_scrape_stats() -> Result<ScrapeStats, CommandError> {
+    crate::db::with_db(|conn| {
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM movies", [], |r| r.get(0))?;
+        let success: i64 = conn.query_row("SELECT COUNT(*) FROM movies WHERE scrape_status=2", [], |r| r.get(0))?;
+        let failed: i64 = conn.query_row("SELECT COUNT(*) FROM movies WHERE scrape_status=3", [], |r| r.get(0))?;
+        let pending: i64 = conn.query_row("SELECT COUNT(*) FROM movies WHERE scrape_status=1", [], |r| r.get(0))?;
+        Ok(ScrapeStats { pending, success, failed, total })
+    })
+}

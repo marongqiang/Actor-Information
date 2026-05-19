@@ -46,6 +46,7 @@ fn run_migrations(conn: &Connection) {
         ("v5", include_str!("migrations/v5.sql")),
         ("v6", include_str!("migrations/v6.sql")),
         ("v7", include_str!("migrations/v7.sql")),
+        ("v8", include_str!("migrations/v8.sql")),
     ];
 
     conn.execute(

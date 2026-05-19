@@ -108,7 +108,8 @@ pub fn get_movies_paginated(
     let query_sql = format!(
         "SELECT m.file_id, m.title, m.original_title, m.chinese_name, m.year, m.poster_local, m.rating, m.genre, m.is_hidden,
                 COALESCE(p.progress, 0), COALESCE(p.duration, 0),
-                COALESCE(m.scrape_status, 0)
+                COALESCE(m.scrape_status, 0),
+                m.scrape_started_at, m.scrape_finished_at, m.scrape_error
          FROM movies m
          LEFT JOIN play_progress p ON m.file_id = p.file_id
          WHERE {}
@@ -139,6 +140,9 @@ pub fn get_movies_paginated(
             progress: row.get(9)?,
             duration: row.get(10)?,
             scrape_status: row.get(11)?,
+            scrape_started_at: row.get(12)?,
+            scrape_finished_at: row.get(13)?,
+            scrape_error: row.get(14)?,
         })
     })?.filter_map(|r| r.ok()).collect();
 
@@ -158,6 +162,9 @@ pub struct MovieRow {
     pub progress: i64,
     pub duration: i64,
     pub scrape_status: i32,
+    pub scrape_started_at: Option<i64>,
+    pub scrape_finished_at: Option<i64>,
+    pub scrape_error: Option<String>,
 }
 
 pub fn get_movie_detail(conn: &Connection, file_id: &str) -> CommandResult<Option<MovieDetailRow>> {

@@ -27,6 +27,9 @@ pub struct MovieItem {
     pub progress: Option<i64>,
     pub duration: Option<i64>,
     pub scrape_status: i32,
+    pub scrape_started_at: Option<i64>,
+    pub scrape_finished_at: Option<i64>,
+    pub scrape_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -64,6 +67,9 @@ pub fn get_movies(
             genre: parse_genre(&r.genre), is_hidden: r.is_hidden,
             progress: Some(r.progress), duration: Some(r.duration),
             scrape_status: r.scrape_status,
+            scrape_started_at: r.scrape_started_at,
+            scrape_finished_at: r.scrape_finished_at,
+            scrape_error: r.scrape_error,
         }).collect();
 
         Ok(MoviesResponse { movies, total })
@@ -214,6 +220,7 @@ pub fn get_actress_movies(actress_name: String) -> Result<Vec<MovieItem>, Comman
                 is_hidden: row.get::<_,i32>(8)?!=0,
                 progress: Some(row.get(9)?), duration: Some(row.get(10)?),
                 scrape_status: row.get(11)?,
+                scrape_started_at: None, scrape_finished_at: None, scrape_error: None,
             })
         })?.filter_map(|r| r.ok()).collect();
         Ok(movies)

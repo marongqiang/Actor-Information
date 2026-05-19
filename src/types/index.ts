@@ -22,6 +22,9 @@ export interface MovieItem {
   group_names?: string[];
   is_favorite?: boolean;
   scrape_status?: number;
+  scrape_started_at?: number | null;
+  scrape_finished_at?: number | null;
+  scrape_error?: string | null;
 }
 
 export interface MovieDetail extends MovieItem {

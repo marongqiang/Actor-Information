@@ -62,6 +62,7 @@ pub fn run() {
             commands::scrape::manual_scrape,
             commands::scrape::select_scrape_result,
             commands::scrape::test_source,
+            commands::scrape::get_scrape_stats,
             // Library
             commands::library::get_movies,
             commands::library::get_movie_detail,
