@@ -56,9 +56,4 @@ const router = createRouter({
   ],
 })
 
-// 路由守卫：不再强制要求登录，115相关操作会在调用API时提示未登录
-router.beforeEach(async (_to, _from, next) => {
-  next()
-})
-
 export default router

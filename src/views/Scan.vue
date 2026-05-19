@@ -172,6 +172,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import type { FileItem } from '@/types'
+import { formatSize } from '@/composables/useFormat'
 
 const store = useScanStore()
 const taskStore = useTaskStore()
@@ -287,14 +288,6 @@ async function runScan() {
   } finally {
     scanLoading.value = false
   }
-}
-
-function formatSize(bytes: number) {
-  if (!bytes) return '-'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0; let size = bytes
-  while (size > 1024 && i < units.length - 1) { size /= 1024; i++ }
-  return size.toFixed(1) + ' ' + units[i]
 }
 
 function statusType(s: string) {

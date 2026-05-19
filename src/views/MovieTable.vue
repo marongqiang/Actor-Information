@@ -88,12 +88,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { MovieItem } from '@/types'
+import { formatSize } from '@/composables/useFormat'
 
 const route = useRoute()
 const store = useLibraryStore()
@@ -125,14 +126,6 @@ function syncScrapeState() {
     scraping: scraping.value, pct: scrapePct.value, done: scrapeDone.value,
     ok: scrapeOk.value, fail: scrapeFail.value, done2: scrapeDone2.value, total: scrapeTotal.value
   })
-}
-
-function formatSize(bytes: number) {
-  if (!bytes) return '-'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0; let s = bytes
-  while (s > 1024 && i < units.length - 1) { s /= 1024; i++ }
-  return s.toFixed(1) + ' ' + units[i]
 }
 
 async function translateAndSave(row: MovieItem) {
@@ -187,7 +180,8 @@ async function batchScrape() {
   })
 
   // Poll progress for selected batch only
-  const pollTimer = setInterval(async () => {
+  if (activePollTimer) clearInterval(activePollTimer)
+  activePollTimer = setInterval(async () => {
     try {
       const stats: any = await invoke('get_batch_progress', { fileIds: ids })
       const done = stats.success + stats.failed
@@ -204,7 +198,7 @@ async function batchScrape() {
           scraping.value = false; scrapeDone.value = false
           syncScrapeState()
         }, 10000)
-        clearInterval(pollTimer)
+        clearInterval(activePollTimer!); activePollTimer = null
         doSearch()
       } else if (done > 0) {
         doSearch() // refresh table periodically
@@ -226,7 +220,14 @@ async function batchUnhide() {
   ElMessage.success('已取消隐藏'); doSearch()
 }
 
+let activePollTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => { fetchData() })
+
+onUnmounted(() => {
+  if (activePollTimer) clearInterval(activePollTimer)
+  if (scrapeState.timer) clearTimeout(scrapeState.timer)
+})
 </script>
 
 <style scoped>

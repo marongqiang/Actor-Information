@@ -13,7 +13,7 @@
       <div v-for="actress in store.actresses" :key="actress.id" class="actress-card"
           @contextmenu.prevent="onContextMenu($event, actress)">
         <div class="avatar-container" @click.stop="goDetail(actress.id)">
-          <img v-if="actress.avatar_local" :src="imgSrc[actress.avatar_local] || ''" class="avatar-img" />
+          <img v-if="actress.avatar_local" :src="imageUrl(actress.avatar_local)" class="avatar-img" />
           <div v-else class="avatar-placeholder">
             <el-icon :size="36"><UserFilled /></el-icon>
           </div>
@@ -62,6 +62,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, UserFilled } from '@element-plus/icons-vue'
 import type { ActressItem, ActressGroupItem } from '@/types'
+import { imageUrl } from '@/composables/useImageUrl'
 
 const route = useRoute()
 const router = useRouter()
@@ -90,23 +91,9 @@ const ctx = reactive({ visible: false, x: 0, y: 0, actress: null as ActressItem 
 const ctxSub = ref('')
 const actressGroups = ref<ActressGroupItem[]>([])
 
-// Image cache: path -> base64 data URL
-const imgSrc = reactive<Record<string, string>>({})
-
-async function preloadImages() {
-  for (const a of store.actresses) {
-    if (a.avatar_local && !imgSrc[a.avatar_local]) {
-      try { imgSrc[a.avatar_local] = await invoke('read_image_base64', { path: a.avatar_local.replace(/\\/g, '/') }) } catch { imgSrc[a.avatar_local] = '' }
-    }
-  }
-}
-
 async function doSearch(resetPage = true) { if (resetPage) page.value = 1; store.fetchPaginated(page.value, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 function onPageSizeChange() { doSearch(true) }
-
-// Auto-preload images when actresses array changes
-watch(() => store.actresses, () => { preloadImages() }, { deep: false })
 
 function goDetail(id: number) { router.push(`/actress/${id}`) }
 

@@ -56,6 +56,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import type { MovieDetail, GroupItem } from '@/types'
 import { Loading, PictureFilled, VideoPlay, Connection } from '@element-plus/icons-vue'
+import { imageUrl } from '@/composables/useImageUrl'
+import { formatSize } from '@/composables/useFormat'
 
 const route = useRoute()
 const router = useRouter()
@@ -63,15 +65,6 @@ const movie = ref<MovieDetail | null>(null)
 const groups = ref<GroupItem[]>([])
 const posterUrl = ref('')
 const actorAvatars = ref<Record<string, string>>({})
-
-function formatSize(bytes: number) {
-  if (!bytes) return '未知'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let size = bytes
-  while (size > 1024 && i < units.length - 1) { size /= 1024; i++ }
-  return size.toFixed(1) + ' ' + units[i]
-}
 
 async function toggleHidden() {
   if (!movie.value) return
@@ -104,22 +97,21 @@ onMounted(async () => {
   movie.value = await invoke('get_movie_detail', { fileId })
   groups.value = movie.value?.groups || []
 
-  // Load poster as base64
+  // Load poster via asset protocol
   if (movie.value?.poster_local) {
-    try { posterUrl.value = await invoke('read_image_base64', { path: movie.value.poster_local }) as string }
-    catch { /* ignore */ }
+    posterUrl.value = imageUrl(movie.value.poster_local)
   }
 
-  // Load actress avatars
+  // Load actress avatars (parallel)
   if (movie.value?.actors) {
-    for (const name of movie.value.actors) {
-      try {
+    const results = await Promise.allSettled(
+      movie.value.actors.map(async (name: string) => {
         const found: any = await invoke('find_actress', { name })
         if (found?.avatar_local) {
-          actorAvatars.value[name] = await invoke('read_image_base64', { path: found.avatar_local }) as string
+          actorAvatars.value[name] = imageUrl(found.avatar_local)
         }
-      } catch { /* ignore */ }
-    }
+      })
+    )
   }
 })
 </script>

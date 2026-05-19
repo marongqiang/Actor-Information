@@ -35,8 +35,8 @@
       >
         <div class="poster-container">
           <img
-            v-if="posterUrls[movie.file_id]"
-            :src="posterUrls[movie.file_id]"
+            v-if="movie.poster_local"
+            :src="posterUrl(movie)"
             :alt="movie.title"
             class="poster-img"
           />
@@ -91,13 +91,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLibraryStore } from '@/stores/library'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, PictureFilled } from '@element-plus/icons-vue'
 import type { MovieItem, GroupItem } from '@/types'
+import { imageUrl } from '@/composables/useImageUrl'
 
 const route = useRoute()
 const store = useLibraryStore()
@@ -126,22 +127,10 @@ const years = computed(() => {
   return Array.from({ length: 40 }, (_, i) => y - i)
 })
 
-// Poster images loaded as base64 data URLs
-const posterUrls = reactive<Record<string, string>>({})
-
-async function loadPoster(movie: MovieItem) {
-  if (!movie.poster_local || posterUrls[movie.file_id]) return
-  try {
-    const url = await invoke('read_image_base64', { path: movie.poster_local }) as string
-    posterUrls[movie.file_id] = url
-  } catch {
-    posterUrls[movie.file_id] = '' // mark as broken
-  }
+// Poster images loaded via Tauri asset protocol
+function posterUrl(movie: MovieItem): string {
+  return imageUrl(movie.poster_local)
 }
-
-watch(() => store.movies, (movies) => {
-  for (const m of movies) { loadPoster(m) }
-}, { immediate: true })
 
 function doSearch() {
   currentPage.value = 1
@@ -182,19 +171,32 @@ async function addToPosterGroup(groupId: number) {
 }
 
 async function rescrapeMovie() {
-  if (ctx.movie) ElMessage.info('重新刮削功能待实现')
+  if (!ctx.movie) return
   ctx.visible = false
+  try {
+    const result: any = await invoke('scrape_batch', { fileIds: [ctx.movie.file_id] })
+    ElMessage.success(`刮削完成: 成功${result.success}, 失败${result.failed}`)
+    store.fetchMovies(currentPage.value, pageSize.value)
+  } catch (e: any) {
+    ElMessage.error('刮削失败: ' + (e?.message || e))
+  }
+}
+
+function onNavRefresh(e: Event) {
+  const ce = e as CustomEvent
+  if (ce.detail.path === '/') {
+    filterGroup.value = ce.detail.query.group_id || undefined
+    doSearch()
+  }
 }
 
 onMounted(async () => {
   await store.fetchGroups()
-  // Listen for forced navigation refresh
-  window.addEventListener('nav-refresh', ((e: CustomEvent) => {
-    if (e.detail.path === '/') {
-      filterGroup.value = e.detail.query.group_id || undefined
-      doSearch()
-    }
-  }) as EventListener)
+  window.addEventListener('nav-refresh', onNavRefresh)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('nav-refresh', onNavRefresh)
 })
 </script>
 

@@ -36,6 +36,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import type { MovieDetail } from '@/types'
 import { Loading, ArrowLeft } from '@element-plus/icons-vue'
+import { formatTime } from '@/composables/useFormat'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,13 +47,6 @@ const duration = ref(0)
 const isFinished = ref(false)
 const videoRef = ref<HTMLVideoElement | null>(null)
 let saveTimer: ReturnType<typeof setInterval> | null = null
-
-function formatTime(seconds: number) {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`
-}
 
 async function onTimeUpdate() {
   if (!videoRef.value) return
@@ -69,8 +63,11 @@ async function saveProgress() {
   })
 }
 
-function onEnded() {
+async function onEnded() {
   isFinished.value = true
+  if (movie.value) {
+    try { await invoke('end_playback', { fileId: movie.value.file_id }) } catch { /* ignore */ }
+  }
 }
 
 async function markWatched() {

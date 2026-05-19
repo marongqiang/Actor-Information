@@ -62,19 +62,26 @@ fn remove_bracket_content(s: &str) -> String {
     let mut result = s.to_string();
     // Remove [...] and (...) containing common patterns
     for (open, close) in &[('[', ']'), ('(', ')')] {
-        while let Some(start) = result.find(*open) {
-            if let Some(end) = result[start..].find(*close) {
-                let content = &result[start + 1..start + end];
-                let should_remove = content.contains("1080p") || content.contains("720p")
-                    || content.contains("HEVC") || content.contains("x265")
-                    || content.contains("x264");
-                if should_remove {
-                    result.replace_range(start..=start + end, " ");
-                } else {
-                    break; // Don't remove non-technical brackets
-                }
+        let mut pos = 0usize;
+        while pos < result.len() {
+            let search_from = &result[pos..];
+            let start = match search_from.find(*open) {
+                Some(s) => pos + s,
+                None => break,
+            };
+            let end = match result[start..].find(*close) {
+                Some(e) => start + e,
+                None => break,
+            };
+            let content = &result[start + 1..end];
+            let should_remove = content.contains("1080p") || content.contains("720p")
+                || content.contains("HEVC") || content.contains("x265")
+                || content.contains("x264");
+            if should_remove {
+                result.replace_range(start..=end, " ");
+                pos = start; // re-scan from replacement point
             } else {
-                break;
+                pos = end + 1; // skip past this non-technical bracket pair
             }
         }
     }

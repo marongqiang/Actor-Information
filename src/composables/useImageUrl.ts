@@ -1,16 +1,12 @@
-import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@tauri-apps/api/core'
 
-// Cache of path -> data URL
-const cache = new Map<string, string>()
-
-export async function imageUrl(path: string | null | undefined): Promise<string> {
+/**
+ * Convert a local file path to a Tauri asset:// URL.
+ * Uses Tauri's built-in asset protocol (no IPC base64 round-trip).
+ * Handles Windows backslash paths automatically.
+ */
+export function imageUrl(path: string | null | undefined): string {
   if (!path) return ''
-  if (cache.has(path)) return cache.get(path)!
-  try {
-    const url: string = await invoke('read_image_base64', { path: path.replace(/\\/g, '/') })
-    cache.set(path, url)
-    return url
-  } catch {
-    return ''
-  }
+  // normalize backslashes for Windows paths
+  return convertFileSrc(path.replace(/\\/g, '/'))
 }

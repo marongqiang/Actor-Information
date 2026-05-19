@@ -101,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, reactive } from 'vue'
+import { computed, onMounted, onUnmounted, ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
@@ -197,12 +197,20 @@ async function fetchGroups() {
   } catch { /* ignore */ }
 }
 
+const unlistenScan = ref<(() => void) | null>(null)
+
 onMounted(async () => {
   await fetchGroups()
-  window.addEventListener('groups-changed', () => fetchGroups())
-  await listen('scan-progress', (event: any) => {
+  window.addEventListener('groups-changed', fetchGroups)
+  const unlisten = await listen('scan-progress', (event: any) => {
     scanTask.value = { id: '', type: 'scan', status: 'running', progress: event.payload.percent || 0, created_at: 0, updated_at: 0 }
   })
+  unlistenScan.value = unlisten
+})
+
+onUnmounted(() => {
+  window.removeEventListener('groups-changed', fetchGroups)
+  if (unlistenScan.value) unlistenScan.value()
 })
 </script>
 

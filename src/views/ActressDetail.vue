@@ -60,6 +60,7 @@ import { useRoute } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { Loading, UserFilled, VideoCamera } from '@element-plus/icons-vue'
 import type { ActressItem } from '@/types'
+import { imageUrl } from '@/composables/useImageUrl'
 
 const route = useRoute()
 const actress = ref<ActressItem | null>(null)
@@ -76,35 +77,28 @@ function previewPhoto(src: string) { previewSrc.value = src; previewVisible.valu
 onMounted(async () => {
   const id = Number(route.params.id)
   try {
-    const result: any = await invoke('get_actresses_paginated', { page: 1, pageSize: 1 })
-    const total = result.total || 0
-    if (total > 0) {
-      const all: any = await invoke('get_actresses_paginated', { page: 1, pageSize: Math.max(total, 1) })
-      const found = (all.list || []).find((a: any) => a.id === id)
-      if (found) {
-        actress.value = found
-        aliases.value = await invoke('get_actress_aliases', { actressId: id })
-        if (found.avatar_local) {
-          try { img.value = await invoke('read_image_base64', { path: found.avatar_local.replace(/\\/g, '/') }) } catch { /* */ }
-        }
-        // Load photos from folder
-        if (found.local_folder_name) {
-          photos.value = await invoke('list_folder_images', { dirPath: found.local_folder_name })
-          // Load first 50 as base64
-          for (const p of photos.value.slice(0, 50)) {
-            try { photoSrcs.value.push(await invoke('read_image_base64', { path: p.replace(/\\/g, '/') })) } catch { /* */ }
-          }
-        }
-        // Load movies
-        if (found.name) {
-          const m: any = await invoke('get_actress_movies', { actressName: found.name })
-          movies.value = (m || []).map((x: any) => ({ ...x, poster_b64: '' }))
-          for (const mv of movies.value) {
-            if (mv.poster_local) {
-              try { mv.poster_b64 = await invoke('read_image_base64', { path: mv.poster_local.replace(/\\/g, '/') }) } catch { /* */ }
-            }
-          }
-        }
+    const found: any = await invoke('get_actress_by_id', { id })
+    if (found) {
+      actress.value = found
+      aliases.value = await invoke('get_actress_aliases', { actressId: id })
+      if (found.avatar_local) {
+        img.value = imageUrl(found.avatar_local)
+      }
+      // Load photos from local folder (parallel batch via IPC)
+      if (found.local_folder_name) {
+        photos.value = await invoke('list_folder_images', { dirPath: found.local_folder_name })
+        const batch = photos.value.slice(0, 50)
+        const results = await Promise.allSettled(
+          batch.map((p: string) => invoke('read_image_base64', { path: p.replace(/\\/g, '/') }))
+        )
+        photoSrcs.value = results
+          .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+          .map(r => r.value)
+      }
+      // Load movies (use asset protocol for poster paths)
+      if (found.name) {
+        const m: any = await invoke('get_actress_movies', { actressName: found.name })
+        movies.value = (m || []).map((x: any) => ({ ...x, poster_b64: imageUrl(x.poster_local) }))
       }
     }
   } catch(e) { console.error(e) }

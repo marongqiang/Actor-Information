@@ -190,6 +190,34 @@ pub fn get_actresses_paginated(
 }
 
 #[tauri::command]
+pub fn get_actress_by_id(id: i64) -> Result<Option<ActressItem>, crate::utils::error::CommandError> {
+    db::with_db(|conn| {
+        let result = conn.query_row(
+            "SELECT a.id, a.name, a.avatar_local, a.debut_year, a.height, a.bust, a.waist, a.hip, a.cup, a.letter,
+                    (SELECT COUNT(*) FROM movie_actors ma JOIN actors act ON ma.actor_id = act.id WHERE act.name = a.name),
+                    a.local_folder_name, a.is_pending, a.source
+             FROM av_actors a WHERE a.id = ?1",
+            [id],
+            |row| {
+                Ok(ActressItem {
+                    id: row.get(0)?, name: row.get(1)?, avatar_local: row.get(2)?,
+                    debut_year: row.get(3)?, height: row.get(4)?, bust: row.get(5)?,
+                    waist: row.get(6)?, hip: row.get(7)?, cup: row.get(8)?,
+                    letter: row.get(9)?, movie_count: row.get(10)?,
+                    local_folder_name: row.get(11)?, is_pending: row.get::<_, i32>(12)? != 0,
+                    source: row.get(13)?,
+                })
+            },
+        );
+        match result {
+            Ok(item) => Ok(Some(item)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(crate::utils::error::CommandError::db(&e.to_string())),
+        }
+    })
+}
+
+#[tauri::command]
 pub fn find_actress(name: String) -> Result<Option<ActressItem>, crate::utils::error::CommandError> {
     actress_sync::find_actress(&name).map(|opt| {
         opt.map(|row| ActressItem {

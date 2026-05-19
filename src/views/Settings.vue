@@ -245,7 +245,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive } from 'vue'
+import { ref, onMounted, onUnmounted, computed, reactive } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -515,6 +515,10 @@ async function cleanGroups() {
 async function clearCache() {
   ElMessage.info('缓存清理功能待实现')
 }
+
+onUnmounted(() => {
+  if (loginTimer) clearInterval(loginTimer)
+})
 
 onMounted(async () => {
   try {

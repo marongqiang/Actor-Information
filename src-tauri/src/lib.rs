@@ -95,6 +95,7 @@ pub fn run() {
             commands::actress_merge::sync_actress_data,
             commands::actress_merge::get_actresses_by_letter,
             commands::actress_merge::get_actresses_paginated,
+            commands::actress_merge::get_actress_by_id,
             commands::actress_merge::find_actress,
             commands::actress_merge::update_actress,
             commands::actress_merge::delete_actresses,

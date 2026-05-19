@@ -23,7 +23,7 @@
           @click="$router.push(`/detail/${m.file_id}`)"
           @contextmenu.prevent="onContextMenu($event, m)">
           <div class="poster-container">
-            <img v-if="posterUrls[m.file_id]" :src="posterUrls[m.file_id]" class="poster-img" />
+            <img v-if="m.poster_local" :src="posterUrl(m)" class="poster-img" />
             <div v-else class="poster-placeholder"><el-icon :size="40"><PictureFilled /></el-icon></div>
           </div>
           <div v-if="m.progress" class="progress-bar">
@@ -66,17 +66,19 @@
           <div v-if="!posterGroups.length" class="ctx-item" style="color:#666;">暂无海报墙分组</div>
         </div>
       </div>
-      <div class="ctx-item" @click="removeFavorite">取消收藏</div>
+      <div class="ctx-item" @click="rescrapeMovie">🔄 重新刮削</div>
+      <div class="ctx-item danger" @click="removeFavorite">取消收藏</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, StarFilled, PictureFilled } from '@element-plus/icons-vue'
+import { imageUrl } from '@/composables/useImageUrl'
 import type { MovieItem, GroupItem } from '@/types'
 
 const route = useRoute()
@@ -99,12 +101,8 @@ const ctxSub = ref('')
 const favGroups = ref<GroupItem[]>([])
 const posterGroups = ref<GroupItem[]>([])
 
-const posterUrls = reactive<Record<string, string>>({})
-async function loadPoster(m: MovieItem) {
-  if (!m.poster_local || posterUrls[m.file_id]) return
-  try {
-    posterUrls[m.file_id] = await invoke('read_image_base64', { path: m.poster_local }) as string
-  } catch { posterUrls[m.file_id] = '' }
+function posterUrl(m: MovieItem): string {
+  return imageUrl(m.poster_local)
 }
 
 watch(() => route.query.group_id, (val) => {
@@ -135,8 +133,6 @@ async function fetchData() {
   } finally { loading.value = false }
 }
 
-watch(movies, (list) => { for (const m of list) { loadPoster(m) } })
-
 function onContextMenu(e: MouseEvent, movie: MovieItem) {
   ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.movie = movie
   invoke('get_groups', { category: 'favorite' }).then((g: any) => favGroups.value = g || [])
@@ -155,13 +151,48 @@ async function addToPosterGroup(groupId: number) {
   ElMessage.success('已添加到分组'); ctx.visible = false
 }
 
+async function rescrapeMovie() {
+  if (!ctx.movie) return
+  ctx.visible = false
+  try {
+    const result: any = await invoke('scrape_batch', { fileIds: [ctx.movie.file_id] })
+    ElMessage.success(`刮削完成: 成功${result.success}, 失败${result.failed}`)
+    fetchData()
+  } catch (e: any) {
+    ElMessage.error('刮削失败: ' + (e?.message || e))
+  }
+}
+
 async function removeFavorite() {
-  if (!ctx.movie) return; ctx.visible = false
-  ElMessage.info('取消收藏功能待实现')
+  if (!ctx.movie) return
+  ctx.visible = false
+  try {
+    // Find which favorite group this movie belongs to and remove it
+    const groups: any[] = await invoke('get_groups', { category: 'favorite' })
+    for (const g of groups) {
+      await invoke('remove_movie_from_group', { groupId: g.id, fileId: ctx.movie.file_id }).catch(() => {})
+    }
+    ElMessage.success('已取消收藏')
+    fetchData()
+  } catch (e: any) {
+    ElMessage.error('操作失败: ' + (e?.message || e))
+  }
+}
+
+function onNavRefresh(e: Event) {
+  const ce = e as CustomEvent
+  if (ce.detail.path === '/favorites') {
+    filterGroupId.value = ce.detail.query.group_id || undefined
+    doSearch()
+  }
 }
 
 onMounted(() => {
-  // watch(immediate) 已在 setup 阶段用正确的 group_id 触发了 doSearch()
+  window.addEventListener('nav-refresh', onNavRefresh)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('nav-refresh', onNavRefresh)
 })
 </script>
 
