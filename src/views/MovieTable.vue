@@ -9,7 +9,6 @@
       </el-button-group>
       <span v-if="selectedRows.length" class="batch-actions">
         已选 {{ selectedRows.length }} 项
-        <el-button size="small" type="primary" @click="batchScrape">刮削</el-button>
         <el-button size="small" type="danger" @click="batchHide">隐藏</el-button>
         <el-button size="small" @click="batchUnhide">取消隐藏</el-button>
       </span>
@@ -62,13 +61,6 @@
         <el-table-column prop="group_names" label="所属分组" width="180" show-overflow-tooltip>
           <template #default="{ row }">{{ (row.group_names || []).join(', ') || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="scrape_status" label="刮削" width="80" sortable="custom">
-          <template #default="{ row }">
-            <el-tag :type="['info','warning','success','danger'][row.scrape_status||0]" size="small">
-              {{ ['未刮削','刮削中','已刮削','失败'][row.scrape_status||0] }}
-            </el-tag>
-          </template>
-        </el-table-column>
         <el-table-column prop="is_hidden" label="隐藏" width="70" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="row.is_hidden ? 'danger' : 'success'" size="small">{{ row.is_hidden ? '是' : '否' }}</el-tag>
@@ -87,17 +79,6 @@
       </el-select>
     </div>
 
-    <!-- 刮削进度弹窗 -->
-    <el-dialog v-model="scrapeDialog" title="刮削进度" width="400px" :close-on-click-modal="false" :show-close="false">
-      <div style="text-align: center; padding: 10px;">
-        <el-progress :percentage="scrapePct" :stroke-width="12" :status="scrapeDone ? 'success' : undefined" />
-        <p style="margin-top: 12px; color: #e0e0e0;">{{ scrapeText }}</p>
-        <p v-if="scrapeDone" style="margin-top: 8px; color: #67c23a;">✓ 成功 {{ scrapeOk }} / 失败 {{ scrapeFail }}</p>
-      </div>
-      <template #footer v-if="scrapeDone">
-        <el-button @click="scrapeDialog=false; doSearch()">关闭</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -121,14 +102,6 @@ const total = ref(0)
 const selectedRows = ref<MovieItem[]>([])
 const sortProp = ref('updated_at')
 const sortOrder = ref('desc')
-
-// Scrape progress
-const scrapeDialog = ref(false)
-const scrapePct = ref(0)
-const scrapeDone = ref(false)
-const scrapeText = ref('')
-const scrapeOk = ref(0)
-const scrapeFail = ref(0)
 
 function formatSize(bytes: number) {
   if (!bytes) return '-'
@@ -174,23 +147,6 @@ function onSelectionChange(rows: MovieItem[]) { selectedRows.value = rows }
 
 function onSortChange(sort: any) {
   if (sort.prop) { sortProp.value = sort.prop; sortOrder.value = sort.order || 'asc'; fetchData() }
-}
-
-async function batchScrape() {
-  if (!selectedRows.value.length) return
-  const ids = selectedRows.value.map(r => r.file_id)
-  scrapeDialog.value = true; scrapePct.value = 0; scrapeDone.value = false
-  scrapeText.value = `正在刮削 ${ids.length} 部影片...`; scrapeOk.value = 0; scrapeFail.value = 0
-  try {
-    const result: any = await invoke('scrape_batch', { fileIds: ids })
-    scrapePct.value = 100; scrapeDone.value = true
-    scrapeOk.value = result.success; scrapeFail.value = result.failed
-    scrapeText.value = `刮削完成: 成功${result.success} 失败${result.failed}`
-    doSearch()
-  } catch(e: any) {
-    scrapeDialog.value = false
-    ElMessage.error('刮削失败: ' + (e?.message || e))
-  }
 }
 
 async function batchHide() {
