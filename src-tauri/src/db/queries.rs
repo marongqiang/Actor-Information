@@ -87,12 +87,14 @@ pub fn get_movies_paginated(
 
     let where_sql = where_clauses.join(" AND ");
 
-    let order = match sort {
-        "year_desc" => "year DESC",
-        "year_asc" => "year ASC",
-        "title_asc" => "title ASC",
-        "rating_desc" => "rating DESC",
-        _ => "updated_at DESC",
+    // Whitelist allowed sort columns to prevent SQL injection
+    let (col, dir) = sort.rsplit_once('_').unwrap_or((sort, "desc"));
+    let allowed = ["title","original_title","chinese_name","year","rating","runtime","genre","file_name","file_size","file_id","is_favorite","group_names","scrape_status","scrape_started_at","scrape_finished_at","scrape_error","is_hidden","updated_at"];
+    let order = if allowed.contains(&col) {
+        let dir = if dir == "asc" { "ASC" } else { "DESC" };
+        format!("{} {}", col, dir)
+    } else {
+        "updated_at DESC".to_string()
     };
 
     // Count total
@@ -114,8 +116,7 @@ pub fn get_movies_paginated(
          LEFT JOIN play_progress p ON m.file_id = p.file_id
          WHERE {}
          ORDER BY m.{} LIMIT ?{} OFFSET ?{}",
-        where_sql,
-        order,
+        where_sql, order,
         param_values.len() + 1,
         param_values.len() + 2,
     );
