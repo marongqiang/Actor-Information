@@ -1029,7 +1029,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                                 if s.len() > cur_len { best_overview = Some(s.to_string()); contributed.push("简介"); }
                             }
                             let rt = normalize_runtime(rt);
-                            if rt > 0 && rt > best_runtime.unwrap_or(0) as i64 && rt <= 600 { best_runtime = Some(rt as i32); contributed.push("时长"); }
+                            if rt > 0 && rt > best_runtime.unwrap_or(0) as i64 { best_runtime = Some(rt as i32); contributed.push("时长"); }
                             if let Some(arr) = info["actors"].as_array() {
                                 for a in arr { if let Some(n) = a.as_str() { let n = n.trim().to_string(); if !all_actors.iter().any(|x| x == &n) { all_actors.push(n.clone()); contributed.push("演员"); } } }
                             }
@@ -1084,7 +1084,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                                 }
                                 if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) {
                                     let r = normalize_runtime(r);
-                                    if r > 0 && r > best_runtime.unwrap_or(0) as i64 && r <= 600 { best_runtime = Some(r as i32); }
+                                    if r > 0 && r > best_runtime.unwrap_or(0) as i64 { best_runtime = Some(r as i32); }
                                 }
                                 if let Some(arr) = info["actors"].as_array() {
                                     for a in arr { if let Some(n) = a.as_str() { let n = n.trim().to_string(); if !all_actors.iter().any(|x| x == &n) { all_actors.push(n); } } }
