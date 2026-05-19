@@ -25,7 +25,7 @@ fn build_scrape_client() -> reqwest::blocking::Client {
     // Do NOT set proxy on this client — it would intercept localhost.
     reqwest::blocking::Client::builder()
         .cookie_store(true)
-        .timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(30))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0")
         .build()
         .expect("Failed to build scrape client")
@@ -953,7 +953,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     let search_url = format!("{}/v1/movies/search?q={}&fallback=true", base, encode(query));
     log::info!("MetaTube 搜索: {}", search_url);
     let resp = get_client().get(&search_url)
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(20))
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
@@ -1011,7 +1011,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
         }
         let info_url = format!("{}/v1/movies/{}/{}", base, provider_name, movie_id);
         let mut contributed = Vec::new();
-        match get_client().get(&info_url).timeout(std::time::Duration::from_secs(5)).send() {
+        match get_client().get(&info_url).timeout(std::time::Duration::from_secs(8)).send() {
             Ok(resp) => {
                 if let Ok(body2) = resp.text() {
                     if let Ok(json2) = serde_json::from_str::<serde_json::Value>(&body2) {
