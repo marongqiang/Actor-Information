@@ -91,7 +91,7 @@ pub fn get_movies_paginated(
     let (col, dir) = sort.rsplit_once('_').unwrap_or((sort, "desc"));
     let allowed = ["title","original_title","chinese_name","year","rating","runtime","genre","file_name","file_size","file_id","is_favorite","group_names","scrape_status","scrape_started_at","scrape_finished_at","scrape_error","is_hidden","updated_at"];
     let order = if allowed.contains(&col) {
-        let dir = if dir == "asc" { "ASC" } else { "DESC" };
+        let dir = if dir.starts_with("asc") { "ASC" } else { "DESC" };
         format!("{} {}", col, dir)
     } else {
         "updated_at DESC".to_string()
