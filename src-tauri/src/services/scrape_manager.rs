@@ -910,8 +910,8 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     let movie_id = item["id"].as_str().unwrap_or("");
     let title = item["title"].as_str().unwrap_or(query).to_string();
     let year = item["release_date"].as_str().and_then(|d| d[..4].parse().ok());
-    let poster = item["thumb_url"].as_str()
-        .or_else(|| item["cover_url"].as_str())
+    let mut poster = item["cover_url"].as_str()
+        .or_else(|| item["thumb_url"].as_str())
         .map(|s| s.to_string());
     let rating = item["score"].as_f64();
     // Actors from search result (pq.StringArray → JSON array of strings)
@@ -948,11 +948,19 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                                     if let Some(n) = a.as_str() { full_actors.push(n.to_string()); }
                                 }
                             }
+                            // Upgrade poster to big_cover_url if available
+                            if let Some(big) = info["big_cover_url"].as_str() {
+                                if !big.is_empty() { poster = Some(big.to_string()); }
+                            } else if let Some(cov) = info["cover_url"].as_str() {
+                                if !cov.is_empty() { poster = Some(cov.to_string()); }
+                            }
+                            log::info!("MetaTube genres raw: {:?}", info["genres"]);
                             if let Some(arr) = info["genres"].as_array() {
                                 for g in arr {
                                     if let Some(n) = g.as_str() { genres.push(n.to_string()); }
                                 }
                             }
+                            log::info!("MetaTube genres parsed: {:?}", genres);
                         }
                     }
                 }
