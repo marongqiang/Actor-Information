@@ -15,9 +15,9 @@
       </span>
     </div>
 
-    <div class="table-wrapper">
       <el-table :data="movies" v-loading="loading"
-        style="min-width: 1300px" border stripe resizable
+        style="width:100%;" border stripe resizable
+        max-height="calc(100vh - 180px)"
         :default-sort="{ prop: 'updated_at', order: 'descending' }"
         @selection-change="onSelectionChange"
         @sort-change="onSortChange"
@@ -65,7 +65,6 @@
           </template>
         </el-table-column>
       </el-table>
-    </div>
 
     <div class="table-footer">
       <el-pagination v-if="total > pageSize" :current-page="page" :page-size="pageSize" :total="total"
@@ -224,6 +223,5 @@ onMounted(() => { fetchData() })
 .toolbar { flex-shrink: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; background: #1a1a2e; border-radius: 8px; margin-bottom: 10px; }
 .toolbar h2 { font-size: 16px; }
 .batch-actions { color: #409eff; font-size: 12px; margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.table-wrapper { flex: 1; overflow: auto; }
 .table-footer { flex-shrink: 0; display: flex; justify-content: center; align-items: center; padding: 10px 0; }
 </style>
