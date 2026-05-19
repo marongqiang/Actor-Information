@@ -214,13 +214,14 @@
         </el-button>
         <p v-if="metaTubeResult" style="margin-top:8px; font-size:12px; color:#67c23a; white-space:pre-wrap;">{{ metaTubeResult }}</p>
         <p v-if="metaTubeError" style="margin-top:8px; font-size:12px; color:#f56c6c;">{{ metaTubeError }}</p>
+      </el-tab-pane>
 
-        <!-- 标签翻译库 -->
-        <h3 style="margin-top:24px;">标签翻译库</h3>
-        <div style="margin-bottom:8px; font-size:12px; color:#9090a0;">日文标签 → 中文翻译，双击中文列可编辑</div>
-        <el-table :data="genreLib" size="small" max-height="300" style="width:100%;" @cell-dblclick="editGenreCell">
-          <el-table-column prop="ja_name" label="日文" width="200" />
-          <el-table-column label="中文" width="200">
+      <!-- 标签库 -->
+      <el-tab-pane label="标签库" name="genres">
+        <div style="margin-bottom:8px; font-size:12px; color:#9090a0;">日文标签 → 中文翻译（刮削时自动填充），双击中文列可编辑</div>
+        <el-table :data="genreLib" size="small" max-height="500" style="width:100%;" @cell-dblclick="editGenreCell">
+          <el-table-column prop="ja_name" label="日文" width="220" />
+          <el-table-column label="中文" min-width="220">
             <template #default="{ row, $index }">
               <el-input v-if="editingGenre === $index" v-model="row.cn_name" size="small" @blur="saveGenreRow(row)" @keyup.enter="saveGenreRow(row)" />
               <span v-else style="cursor:pointer;">{{ row.cn_name }}</span>

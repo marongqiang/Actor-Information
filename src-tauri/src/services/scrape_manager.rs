@@ -199,64 +199,79 @@ fn auto_translate_movie(file_id: &str, title: &str, genres: Option<&[String]>) {
 }
 
 fn auto_translate_genres(file_id: &str, genres: &[String]) {
-    let mut translated = Vec::new();
-    let mut missing = Vec::new();
+    let mut translated: Vec<String> = Vec::new();
+    let mut missing: Vec<(usize, String)> = Vec::new();
 
-    // Step 1: Check translation library
-    for g in genres {
+    // Step 1: Check library, collect missing
+    for (i, g) in genres.iter().enumerate() {
         if let Ok(Some(cn)) = db::with_db(|conn| crate::db::queries::get_genre_translation(conn, g)) {
-            translated.push(cn);
-        } else {
-            translated.push(String::new()); // placeholder
-            missing.push(g.clone());
+            if !cn.is_empty() { translated.push(cn); continue; }
         }
+        translated.push(String::new());
+        missing.push((i, g.clone()));
     }
 
-    // Step 2: Translate missing ones via API
+    // Step 2: Batch translate missing via API
     if !missing.is_empty() {
-        let list = missing.join(", ");
+        let list: Vec<String> = missing.iter().enumerate()
+            .map(|(n, (_, g))| format!("{}.{}", n+1, g)).collect();
         let deepseek_key = crate::services::secure_config::get_secure_config("deepseek_api_key")
             .ok().flatten().unwrap_or_default();
-
         let prompt = format!(
-            "将以下日本AV影片的类型标签翻译成简体中文，每个标签一行，保持顺序：\n{}",
-            list
+            "将以下日本AV标签翻译成简体中文，严格按编号格式输出：\n{}\n\n输出格式（每行一个）：\n1.中文\n2.中文\n...",
+            list.join("\n")
         );
-
-        let cn_list = if !deepseek_key.is_empty() {
+        let cn_text = if !deepseek_key.is_empty() {
             translate_via_deepseek(&prompt, &deepseek_key)
         } else {
             None
-        }.or_else(|| translate_via_google(&prompt));
+        }.or_else(|| translate_via_google(&list.join("\n")));
 
-        if let Some(cn_list) = cn_list {
-            let api_translated: Vec<String> = cn_list.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-            // Fill in translated values and save to library
-            let mut mi = 0;
-            for (i, g) in genres.iter().enumerate() {
-                if translated[i].is_empty() && mi < api_translated.len() {
-                    translated[i] = api_translated[mi].clone();
-                    // Save to library
-                    let _ = db::with_db(|conn| {
-                        crate::db::queries::set_genre_translation(conn, g, &api_translated[mi])
-                    });
-                    mi += 1;
+        if let Some(ref text) = cn_text {
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(dot) = line.find('.') {
+                    let num: usize = line[..dot].trim().parse().unwrap_or(0);
+                    let cn = line[dot+1..].trim().to_string();
+                    if num > 0 && num <= missing.len() && !cn.is_empty() {
+                        let (idx, ref ja) = missing[num - 1];
+                        translated[idx] = cn.clone();
+                        let _ = db::with_db(|conn| {
+                            crate::db::queries::set_genre_translation(conn, ja, &cn)
+                        });
+                    }
+                }
+            }
+        }
+
+        // Fallback: for any still missing, try Google individually
+        for (idx, ja) in &missing {
+            if translated[*idx].is_empty() {
+                if let Some(cn) = translate_via_google(ja) {
+                    let cn = cn.trim().to_string();
+                    if !cn.is_empty() && &cn != ja {
+                        translated[*idx] = cn.clone();
+                        let _ = db::with_db(|conn| {
+                            crate::db::queries::set_genre_translation(conn, ja, &cn)
+                        });
+                    }
                 }
             }
         }
     }
 
-    // Step 3: Save to movie (only if we have all translations)
-    let final_genres: Vec<String> = translated.iter().filter(|s| !s.is_empty()).cloned().collect();
-    if !final_genres.is_empty() {
-        let json = serde_json::to_string(&final_genres).unwrap_or_default();
-        let _ = db::with_db(|conn| {
-            conn.execute("UPDATE movies SET genre=?1 WHERE file_id=?2",
-                rusqlite::params![json, file_id])?;
-            Ok(())
-        });
-        log::info!("类型翻译: {:?} -> {:?}", genres, final_genres);
+    // Step 3: Remove still-empty (use original as fallback)
+    for (i, g) in genres.iter().enumerate() {
+        if translated[i].is_empty() { translated[i] = g.clone(); }
     }
+
+    let json = serde_json::to_string(&translated).unwrap_or_default();
+    let _ = db::with_db(|conn| {
+        conn.execute("UPDATE movies SET genre=?1 WHERE file_id=?2",
+            rusqlite::params![json, file_id])?;
+        Ok(())
+    });
+    log::info!("类型翻译: {:?} -> {:?}", genres, translated);
 }
 
 /// Auto-translate original_title to chinese_name after scraping
