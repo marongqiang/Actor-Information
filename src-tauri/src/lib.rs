@@ -124,6 +124,7 @@ pub fn run() {
             commands::config::list_folder_images,
             commands::config::update_metatube_sdk,
             commands::config::translate_text,
+            commands::config::open_devtools,
             // Task
             commands::task::get_pending_tasks,
             commands::task::resume_task,

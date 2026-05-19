@@ -142,6 +142,11 @@ fn encode_uri(s: &str) -> String {
     result
 }
 
+#[tauri::command]
+pub fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 /// Update MetaTube SDK: git pull + go build
 #[tauri::command]
 pub fn update_metatube_sdk() -> Result<String, crate::utils::error::CommandError> {

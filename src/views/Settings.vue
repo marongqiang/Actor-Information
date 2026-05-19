@@ -128,6 +128,7 @@
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="saveUiSettings">保存界面设置</el-button>
+            <el-button @click="openDevtools" style="margin-left:12px;">开发者工具</el-button>
           </el-form-item>
         </el-form>
       </el-tab-pane>
@@ -471,6 +472,8 @@ async function saveCacheSettings() {
   await invoke('set_config', { key: 'cache_max_size', value: String(cacheMaxSize.value * 1024 * 1024) })
   ElMessage.success('缓存设置已保存')
 }
+
+function openDevtools() { invoke('open_devtools') }
 
 async function saveUiSettings() {
   await invoke('set_config', { key: 'theme', value: theme.value })
