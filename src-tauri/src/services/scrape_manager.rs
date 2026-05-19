@@ -1076,8 +1076,10 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
                             if json["error"]["message"].is_null() {
                                 let info = &json["data"];
-                                if best_overview.is_none() {
-                                    if let Some(s) = info["summary"].as_str() { if !s.is_empty() { best_overview = Some(s.to_string()); } }
+                                if let Some(s) = info["summary"].as_str() {
+                                    if s.len() > best_overview.as_ref().map_or(0, |o: &String| o.len()) {
+                                        best_overview = Some(s.to_string());
+                                    }
                                 }
                                 if best_runtime.is_none() {
                                     if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) { if r > 0 { best_runtime = Some(r as i32); } }
