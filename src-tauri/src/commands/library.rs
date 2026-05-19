@@ -24,6 +24,7 @@ pub struct MovieItem {
     pub rating: Option<f64>,
     pub genre: Vec<String>,
     pub is_hidden: bool,
+    pub runtime: Option<i32>,
     pub progress: Option<i64>,
     pub duration: Option<i64>,
     pub scrape_status: i32,
@@ -64,7 +65,7 @@ pub fn get_movies(
             file_id: r.file_id, title: r.title,
             original_title: r.original_title, chinese_name: r.chinese_name,
             year: r.year, poster_local: r.poster_local, rating: r.rating,
-            genre: parse_genre(&r.genre), is_hidden: r.is_hidden,
+            genre: parse_genre(&r.genre), runtime: r.runtime, is_hidden: r.is_hidden,
             progress: Some(r.progress), duration: Some(r.duration),
             scrape_status: r.scrape_status,
             scrape_started_at: r.scrape_started_at,
@@ -205,7 +206,7 @@ pub fn hide_movies(file_ids: Vec<String>) -> Result<(), CommandError> {
 pub fn get_actress_movies(actress_name: String) -> Result<Vec<MovieItem>, CommandError> {
     db::with_db(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT m.file_id, m.title, m.original_title, m.chinese_name, m.year, m.poster_local, m.rating, m.genre, m.is_hidden,
+            "SELECT m.file_id, m.title, m.original_title, m.chinese_name, m.year, m.poster_local, m.rating, m.genre, m.runtime, m.is_hidden,
                     COALESCE(p.progress,0), COALESCE(p.duration,0), COALESCE(m.scrape_status,0)
              FROM movies m LEFT JOIN play_progress p ON m.file_id=p.file_id
              WHERE m.file_id IN (SELECT movie_id FROM movie_actors ma JOIN actors a ON ma.actor_id=a.id WHERE a.name=?1)
@@ -217,9 +218,10 @@ pub fn get_actress_movies(actress_name: String) -> Result<Vec<MovieItem>, Comman
                 chinese_name: row.get(3)?, year: row.get(4)?,
                 poster_local: row.get(5)?, rating: row.get(6)?,
                 genre: parse_genre(&row.get::<_,Option<String>>(7)?),
-                is_hidden: row.get::<_,i32>(8)?!=0,
-                progress: Some(row.get(9)?), duration: Some(row.get(10)?),
-                scrape_status: row.get(11)?,
+                runtime: row.get(8)?,
+                is_hidden: row.get::<_,i32>(9)?!=0,
+                progress: Some(row.get(10)?), duration: Some(row.get(11)?),
+                scrape_status: row.get(12)?,
                 scrape_started_at: None, scrape_finished_at: None, scrape_error: None,
             })
         })?.filter_map(|r| r.ok()).collect();
