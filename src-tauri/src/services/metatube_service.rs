@@ -56,13 +56,19 @@ pub fn start_server() -> Result<(), String> {
         None
     };
 
+    let log_dir = crate::db::get_data_dir().join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("metatube.log");
+    let log_file = std::fs::File::create(&log_path)
+        .unwrap_or_else(|_| std::fs::File::create("metatube.log").unwrap());
+
     log::info!("MetaTube: 启动服务 {} --port={} proxy={:?}", path.display(), DEFAULT_PORT, proxy_url);
 
     let mut cmd = Command::new(path);
     cmd.arg("--port").arg(DEFAULT_PORT.to_string())
        .creation_flags(CREATE_NO_WINDOW)
-       .stdout(std::process::Stdio::null())
-       .stderr(std::process::Stdio::null());
+       .stdout(std::process::Stdio::from(log_file.try_clone().unwrap()))
+       .stderr(std::process::Stdio::from(log_file));
 
     if let Some(ref proxy) = proxy_url {
         cmd.env("HTTP_PROXY", proxy)
