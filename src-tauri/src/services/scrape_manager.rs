@@ -970,106 +970,134 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
         return Err(CommandError::scrape_failed("MetaTube 无结果"));
     }
 
-    // Score search results by completeness: cover(2) + actors(2) + year(1)
-    let mut scored: Vec<(usize, usize)> = results.iter().enumerate().map(|(i, item)| {
-        let mut s = 1usize; // base: has title
-        if item["cover_url"].as_str().or(item["thumb_url"].as_str()).is_some() { s += 2; }
-        if item["actors"].as_array().map(|a| a.len()).unwrap_or(0) > 0 { s += 2; }
-        if item["release_date"].as_str().is_some() { s += 1; }
-        (i, s)
-    }).collect();
-    scored.sort_by_key(|(_, s)| std::cmp::Reverse(*s));
-    log::info!("MetaTube 结果评分(最多尝试3个): {:?}", &scored[..scored.len().min(3)]);
+    // Try ALL results and merge data from multiple providers
+    // Each field picks the best value across all sources
+    log::info!("MetaTube 共{}个结果, 全部尝试并合并最佳字段", results.len());
 
-    // Try up to 3 best results, stop when we get a "complete enough" result
-    let max_try = results.len().min(3);
-    let mut best_result: Option<ScrapeResult> = None;
-    let mut best_completeness = 0usize;
+    let mut best_title = query.to_string();
+    let mut best_poster = None;
+    let mut best_year = None;
+    let mut best_rating: Option<f64> = None;
+    let mut best_overview = None;
+    let mut best_runtime = None;
+    let mut all_actors: Vec<String> = Vec::new();
+    let mut all_genres: Vec<String> = Vec::new();
+    let mut sources_used: Vec<String> = Vec::new();
 
-    for &(idx, _search_score) in &scored[..max_try] {
-        let item = &results[idx];
+    for (idx, item) in results.iter().enumerate() {
         let provider_name = item["provider"].as_str().unwrap_or("metatube");
         let movie_id = item["id"].as_str().unwrap_or("");
-        let title = item["title"].as_str().unwrap_or(query).to_string();
-        let year = item["release_date"].as_str().and_then(|d| d[..4].parse().ok());
-        let mut poster = item["cover_url"].as_str()
-            .or_else(|| item["thumb_url"].as_str())
-            .map(|s| s.to_string());
-        let rating = item["score"].as_f64();
-        let mut actors = Vec::new();
-        if let Some(arr) = item["actors"].as_array() {
-            for a in arr { if let Some(n) = a.as_str() { actors.push(n.to_string()); } }
+
+        // Merge search-level fields (longest title, longest overview-worthy name)
+        if let Some(t) = item["title"].as_str() {
+            if t.len() > best_title.len() { best_title = t.to_string(); }
         }
-
-        // Step 2: Get movie info
-        let mut overview = None;
-        let mut runtime = None;
-        let mut genres = Vec::new();
-        let mut full_actors = actors.clone();
-
-        if !provider_name.is_empty() && !movie_id.is_empty() {
-            let info_url = format!("{}/v1/movies/{}/{}", base, provider_name, movie_id);
-            log::info!("MetaTube 详情[{}]: {}/{}", idx, provider_name, movie_id);
-            match get_client().get(&info_url).timeout(std::time::Duration::from_secs(6)).send() {
-                Ok(resp) => {
-                    if let Ok(body2) = resp.text() {
-                        if let Ok(json2) = serde_json::from_str::<serde_json::Value>(&body2) {
-                            if json2["error"]["message"].is_null() {
-                                let info = &json2["data"];
-                                overview = info["summary"].as_str().map(|s| s.to_string());
-                                runtime = info["runtime"].as_i64().map(|v| v as i32)
-                                    .or_else(|| info["duration"].as_i64().map(|v| v as i32));
-                                if let Some(arr) = info["actors"].as_array() {
-                                    full_actors.clear();
-                                    for a in arr { if let Some(n) = a.as_str() { full_actors.push(n.to_string()); } }
-                                }
-                                if let Some(big) = info["big_cover_url"].as_str() {
-                                    if !big.is_empty() { poster = Some(big.to_string()); }
-                                } else if let Some(cov) = info["cover_url"].as_str() {
-                                    if !cov.is_empty() { poster = Some(cov.to_string()); }
-                                }
-                                if let Some(arr) = info["genres"].as_array() {
-                                    for g in arr { if let Some(n) = g.as_str() { genres.push(n.to_string()); } }
-                                }
-                            }
-                        }
-                    }
+        if let Some(d) = item["release_date"].as_str() {
+            if best_year.is_none() { best_year = d[..4].parse().ok(); }
+        }
+        if let Some(s) = item["score"].as_f64() {
+            if best_rating.is_none() || s > best_rating.unwrap_or(0.0) { best_rating = Some(s); }
+        }
+        // Merge search-level poster (prefer larger: cover_url > thumb_url)
+        if best_poster.is_none() {
+            best_poster = item["cover_url"].as_str()
+                .or_else(|| item["thumb_url"].as_str())
+                .map(|s| s.to_string());
+        }
+        // Merge search-level actors
+        if let Some(arr) = item["actors"].as_array() {
+            for a in arr {
+                if let Some(n) = a.as_str() {
+                    if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); }
                 }
-                Err(e) => log::warn!("MetaTube 详情请求失败[{}]: {}", idx, e),
             }
         }
 
-        // Score completeness: cover(3)+actors(3)+genres(2)+overview(1)+runtime(1)
-        let mut comp = 0usize;
-        if poster.is_some() { comp += 3; }
-        if !full_actors.is_empty() { comp += 3; }
-        if !genres.is_empty() { comp += 2; }
-        if overview.is_some() { comp += 1; }
-        if runtime.is_some() { comp += 1; }
-        log::info!("MetaTube [{}] {} 完整度={}/10 (封面={} 演员={} 类型={} 简介={} 时长={})",
-            idx, provider_name, comp,
-            poster.is_some(), !full_actors.is_empty(), !genres.is_empty(),
-            overview.is_some(), runtime.is_some());
+        // Fetch info API for full details
+        if provider_name.is_empty() || movie_id.is_empty() { continue; }
+        let info_url = format!("{}/v1/movies/{}/{}", base, provider_name, movie_id);
+        match get_client().get(&info_url).timeout(std::time::Duration::from_secs(5)).send() {
+            Ok(resp) => {
+                if let Ok(body2) = resp.text() {
+                    if let Ok(json2) = serde_json::from_str::<serde_json::Value>(&body2) {
+                        if json2["error"]["message"].is_null() {
+                            let info = &json2["data"];
+                            let mut contributed = false;
 
-        let result = ScrapeResult {
-            source: format!("metatube({})", provider_name),
-            title, year, poster_url: poster, backdrop_url: None,
-            overview, rating, runtime, director: None,
-            genre: if genres.is_empty() { None } else { Some(genres) },
-            actors: if full_actors.is_empty() { None } else { Some(full_actors) },
-            score: 65,
-        };
-
-        if comp > best_completeness {
-            best_completeness = comp;
-            best_result = Some(result);
+                            // Overview: take longest
+                            if let Some(s) = info["summary"].as_str() {
+                                if s.len() > best_overview.as_ref().map_or(0, |o: &String| o.len()) {
+                                    best_overview = Some(s.to_string());
+                                    contributed = true;
+                                }
+                            }
+                            // Runtime: take longest non-zero
+                            if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) {
+                                if r > 0 && r > best_runtime.unwrap_or(0) as i64 {
+                                    best_runtime = Some(r as i32);
+                                    contributed = true;
+                                }
+                            }
+                            // Actors: merge unique
+                            if let Some(arr) = info["actors"].as_array() {
+                                for a in arr {
+                                    if let Some(n) = a.as_str() {
+                                        if !all_actors.contains(&n.to_string()) {
+                                            all_actors.push(n.to_string());
+                                            contributed = true;
+                                        }
+                                    }
+                                }
+                            }
+                            // Genres: merge unique
+                            if let Some(arr) = info["genres"].as_array() {
+                                for g in arr {
+                                    if let Some(n) = g.as_str() {
+                                        if !all_genres.contains(&n.to_string()) {
+                                            all_genres.push(n.to_string());
+                                            contributed = true;
+                                        }
+                                    }
+                                }
+                            }
+                            // Poster: prefer big cover
+                            if best_poster.is_none() || best_poster.as_ref().map_or(true, |p| p.contains("thumb")) {
+                                if let Some(big) = info["big_cover_url"].as_str() {
+                                    if !big.is_empty() { best_poster = Some(big.to_string()); contributed = true; }
+                                } else if let Some(cov) = info["cover_url"].as_str() {
+                                    if !cov.is_empty() { best_poster = Some(cov.to_string()); contributed = true; }
+                                }
+                            }
+                            // Rating
+                            if best_rating.is_none() {
+                                if let Some(s) = info["score"].as_f64() {
+                                    best_rating = Some(s); contributed = true;
+                                }
+                            }
+                            if contributed { sources_used.push(format!("{}({})", provider_name, idx)); }
+                        }
+                    }
+                }
+            }
+            Err(e) => log::warn!("MetaTube 详情[{}] {}: {}", idx, provider_name, e),
         }
-
-        // If we have a "good enough" result (7+/10), stop trying more
-        if comp >= 7 { break; }
     }
 
-    best_result.ok_or_else(|| CommandError::scrape_failed("MetaTube 未能获取完整信息"))
+    if best_title == query && all_actors.is_empty() && best_poster.is_none() {
+        return Err(CommandError::scrape_failed("MetaTube 所有源均无有效数据"));
+    }
+
+    log::info!("MetaTube 合并结果: title={} year={:?} actors={} genres={} runtime={:?} sources={:?}",
+        truncate_log(&best_title, 40), best_year, all_actors.len(), all_genres.len(), best_runtime, sources_used);
+
+    Ok(ScrapeResult {
+        source: format!("metatube({})", sources_used.join(",")),
+        title: best_title, year: best_year, poster_url: best_poster, backdrop_url: None,
+        overview: best_overview, rating: best_rating, runtime: best_runtime, director: None,
+        genre: if all_genres.is_empty() { None } else { Some(all_genres) },
+        actors: if all_actors.is_empty() { None } else { Some(all_actors) },
+        score: 65,
+    })
 }
 
 fn truncate_log(s: &str, max: usize) -> &str {
