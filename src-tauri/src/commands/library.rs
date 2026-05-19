@@ -251,6 +251,7 @@ pub fn unhide_movies(file_ids: Vec<String>) -> Result<(), CommandError> {
 pub struct GenreTranslation {
     pub ja_name: String,
     pub cn_name: String,
+    pub blacklisted: bool,
 }
 
 #[tauri::command]
@@ -258,8 +259,13 @@ pub fn get_genre_translations() -> Result<Vec<GenreTranslation>, CommandError> {
     db::with_db(|conn| {
         let rows = queries::get_all_genre_translations(conn)?;
         log::info!("标签库查询: {} 条记录", rows.len());
-        Ok(rows.into_iter().map(|(ja_name, cn_name)| GenreTranslation { ja_name, cn_name }).collect())
+        Ok(rows.into_iter().map(|(ja_name, cn_name, blacklisted)| GenreTranslation { ja_name, cn_name, blacklisted }).collect())
     })
+}
+
+#[tauri::command]
+pub fn set_genre_blacklist(ja_name: String, blacklisted: bool) -> Result<(), CommandError> {
+    db::with_db(|conn| queries::set_genre_blacklist(conn, &ja_name, blacklisted))
 }
 
 #[tauri::command]

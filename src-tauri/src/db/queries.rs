@@ -284,9 +284,21 @@ pub fn delete_genre_translation(conn: &Connection, ja_name: &str) -> CommandResu
     Ok(())
 }
 
-pub fn get_all_genre_translations(conn: &Connection) -> CommandResult<Vec<(String, String)>> {
-    let mut stmt = conn.prepare("SELECT ja_name, cn_name FROM genre_translations ORDER BY ja_name")?;
-    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+pub fn get_all_genre_translations(conn: &Connection) -> CommandResult<Vec<(String, String, bool)>> {
+    let mut stmt = conn.prepare("SELECT ja_name, cn_name, blacklisted!=0 FROM genre_translations ORDER BY ja_name")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+pub fn set_genre_blacklist(conn: &Connection, ja_name: &str, blacklisted: bool) -> CommandResult<()> {
+    conn.execute("UPDATE genre_translations SET blacklisted=?1 WHERE ja_name=?2", rusqlite::params![blacklisted as i32, ja_name])?;
+    Ok(())
+}
+
+pub fn get_blacklisted_genres(conn: &Connection) -> CommandResult<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT ja_name FROM genre_translations WHERE blacklisted!=0")?;
+    let rows = stmt.query_map([], |row| row.get(0))?
         .filter_map(|r| r.ok()).collect();
     Ok(rows)
 }

@@ -1001,7 +1001,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
             best_poster = item["cover_url"].as_str().or_else(|| item["thumb_url"].as_str()).map(|s| s.to_string());
         }
         if let Some(arr) = item["actors"].as_array() {
-            for a in arr { if let Some(n) = a.as_str() { if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); } } }
+            for a in arr { if let Some(n) = a.as_str() { let n = n.trim().to_string(); if !all_actors.iter().any(|x| x == &n) { all_actors.push(n); } } }
         }
 
         // Fetch info API
@@ -1030,10 +1030,10 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                             }
                             if rt > 0 && rt > best_runtime.unwrap_or(0) as i64 { best_runtime = Some(rt as i32); contributed.push("时长"); }
                             if let Some(arr) = info["actors"].as_array() {
-                                for a in arr { if let Some(n) = a.as_str() { if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); contributed.push("演员"); } } }
+                                for a in arr { if let Some(n) = a.as_str() { let n = n.trim().to_string(); if !all_actors.iter().any(|x| x == &n) { all_actors.push(n.clone()); contributed.push("演员"); } } }
                             }
                             if let Some(arr) = info["genres"].as_array() {
-                                for g in arr { if let Some(n) = g.as_str() { if !all_genres.contains(&n.to_string()) { all_genres.push(n.to_string()); contributed.push("类型"); } } }
+                                for g in arr { if let Some(n) = g.as_str() { let n = n.trim().to_string(); if !all_genres.iter().any(|x| x == &n) { all_genres.push(n); contributed.push("类型"); } } }
                             }
                             if best_poster.is_none() || best_poster.as_ref().map_or(true, |p| p.contains("thumb")) {
                                 if let Some(big) = info["big_cover_url"].as_str() { if !big.is_empty() { best_poster = Some(big.to_string()); contributed.push("封面"); } }
@@ -1085,10 +1085,10 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                                     if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) { if r > 0 { best_runtime = Some(r as i32); } }
                                 }
                                 if let Some(arr) = info["actors"].as_array() {
-                                    for a in arr { if let Some(n) = a.as_str() { if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); } } }
+                                    for a in arr { if let Some(n) = a.as_str() { let n = n.trim().to_string(); if !all_actors.iter().any(|x| x == &n) { all_actors.push(n); } } }
                                 }
                                 if let Some(arr) = info["genres"].as_array() {
-                                    for g in arr { if let Some(n) = g.as_str() { if !all_genres.contains(&n.to_string()) { all_genres.push(n.to_string()); } } }
+                                    for g in arr { if let Some(n) = g.as_str() { let n = n.trim().to_string(); if !all_genres.iter().any(|x| x == &n) { all_genres.push(n); } } }
                                 }
                                 if best_rating.is_none() {
                                     if let Some(s) = info["score"].as_f64() { best_rating = Some(s); }
@@ -1107,6 +1107,11 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
             }
         }
     }
+
+    // Filter blacklisted genres
+    let blacklist: Vec<String> = db::with_db(|conn| crate::db::queries::get_blacklisted_genres(conn)).unwrap_or_default();
+    all_genres.retain(|g| !blacklist.contains(g));
+    log::info!("MetaTube 过滤黑名单后: 标签{}个 (黑名单{}个)", all_genres.len(), blacklist.len());
 
     Ok(ScrapeResult {
         source: format!("metatube({})", sources_used.join(",")),

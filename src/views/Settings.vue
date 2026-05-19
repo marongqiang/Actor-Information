@@ -235,6 +235,11 @@
               <span v-else style="cursor:pointer;">{{ row.cn_name }}</span>
             </template>
           </el-table-column>
+          <el-table-column label="黑名单" width="80">
+            <template #default="{ row }">
+              <el-switch size="small" :model-value="row.blacklisted" @change="(v:boolean) => toggleBlacklist(row, v)" />
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="80">
             <template #default="{ row }">
               <el-button size="small" text type="danger" @click="deleteGenreRow(row)">删除</el-button>
@@ -365,7 +370,7 @@ async function updateMetaTube() {
 }
 
 // Genre translation library
-interface GenreRow { ja_name: string; cn_name: string }
+interface GenreRow { ja_name: string; cn_name: string; blacklisted?: boolean }
 const genreLib = ref<GenreRow[]>([])
 const newGenreJa = ref('')
 const newGenreCn = ref('')
@@ -384,6 +389,11 @@ async function saveGenreRow(row: GenreRow) {
     await invoke('set_genre_translation', { jaName: row.ja_name, cnName: row.cn_name })
   }
 }
+async function toggleBlacklist(row: GenreRow, v: boolean) {
+  row.blacklisted = v
+  await invoke('set_genre_blacklist', { jaName: row.ja_name, blacklisted: v })
+}
+
 async function deleteGenreRow(row: GenreRow) {
   await invoke('delete_genre_translation', { jaName: row.ja_name })
   genreLib.value = genreLib.value.filter(r => r.ja_name !== row.ja_name)

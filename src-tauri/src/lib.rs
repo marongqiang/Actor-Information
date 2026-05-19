@@ -74,6 +74,7 @@ pub fn run() {
             commands::library::get_genre_translations,
             commands::library::set_genre_translation,
             commands::library::delete_genre_translation,
+            commands::library::set_genre_blacklist,
             commands::library::batch_set_scrape_status,
             commands::library::get_actress_movies,
             // Groups
