@@ -44,11 +44,6 @@ const router = createRouter({
       component: () => import('@/views/MovieTable.vue'),
     },
     {
-      path: '/scrape-log',
-      name: 'scrape-log',
-      component: () => import('@/views/ScrapeLog.vue'),
-    },
-    {
       path: '/scan',
       name: 'scan',
       component: () => import('@/views/Scan.vue'),

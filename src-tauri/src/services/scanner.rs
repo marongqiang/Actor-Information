@@ -118,11 +118,7 @@ pub async fn scan_directory(
             is_hidden: false,
         };
 
-        db::with_db(|conn| {
-            db::queries::insert_movie(conn, &m)?;
-            db::queries::init_scrape_log(conn, &file_id)?;
-            Ok(()) as CommandResult<()>
-        })?;
+        db::with_db(|conn| db::queries::insert_movie(conn, &m))?;
         new_count += 1;
         if new_count == 1 { log::info!("第一部入库影片: {} (fid={})", m.title, m.file_id); }
     }
