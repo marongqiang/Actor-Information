@@ -23,7 +23,7 @@
           @click="$router.push(`/detail/${m.file_id}`)"
           @contextmenu.prevent="onContextMenu($event, m)">
           <div class="poster-container">
-            <img v-if="m.poster_local" :src="posterUrl(m)" class="poster-img" />
+            <img v-if="posterSrc(m)" :src="posterSrc(m)" class="poster-img" />
             <div v-else class="poster-placeholder"><el-icon :size="40"><PictureFilled /></el-icon></div>
           </div>
           <div v-if="m.progress" class="progress-bar">
@@ -101,8 +101,13 @@ const ctxSub = ref('')
 const favGroups = ref<GroupItem[]>([])
 const posterGroups = ref<GroupItem[]>([])
 
-function posterUrl(m: MovieItem): string {
-  return imageUrl(m.poster_local)
+// Reactive poster cache
+const posterUrls = reactive<Record<string, string>>({})
+function posterSrc(m: MovieItem): string { return posterUrls[m.file_id] || '' }
+async function loadPoster(m: MovieItem) {
+  if (m.poster_local && !(m.file_id in posterUrls)) {
+    posterUrls[m.file_id] = await imageUrl(m.poster_local)
+  }
 }
 
 watch(() => route.query.group_id, (val) => {
@@ -132,6 +137,8 @@ async function fetchData() {
     total.value = result.total || 0
   } finally { loading.value = false }
 }
+
+watch(movies, (list) => { for (const m of list) { loadPoster(m) } })
 
 function onContextMenu(e: MouseEvent, movie: MovieItem) {
   ctx.visible = true; ctx.x = e.clientX; ctx.y = e.clientY; ctx.movie = movie

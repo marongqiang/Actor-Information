@@ -205,6 +205,13 @@
           </el-form-item>
         </el-form>
 
+        <!-- 正经模式 -->
+        <h3 style="margin-top:24px;">显示模式</h3>
+        <el-form-item label="正经模式">
+          <el-switch v-model="sfwMode" @change="saveSfwMode" />
+          <span style="margin-left:8px;font-size:12px;color:#9090a0;">开启后所有海报替换为指定图片</span>
+        </el-form-item>
+
         <!-- 刮削引擎更新 -->
         <h3 style="margin-top:24px;">刮削引擎</h3>
         <div style="margin-bottom:12px; font-size:12px; color:#9090a0;">
@@ -333,6 +340,12 @@ const allowRenameFolder = ref(false)
 const mergeAutoFolders = ref(true)
 const mergeFilePattern = ref('{name}_{index}{ext}')
 const mergeDryRun = ref(true)
+
+// SFW Mode
+const sfwMode = ref(false)
+async function saveSfwMode() {
+  await invoke('set_config', { key: 'sfw_mode', value: String(sfwMode.value) })
+}
 
 // MetaTube SDK update
 const metaTubeLoading = ref(false)
@@ -560,6 +573,7 @@ onMounted(async () => {
     jphooSecret.value = (await invoke('get_config', { key: 'jphoo_secret' }) as string) || ''
     jphooRefresh.value = (await invoke('get_config', { key: 'jphoo_refreshtoken' }) as string) || ''
     jphooGuestId.value = (await invoke('get_config', { key: 'jphoo_guestid' }) as string) || ''
+    sfwMode.value = (await invoke('get_config', { key: 'sfw_mode' }) as string) === 'true'
     loadGenreLib()
     const remarks = (await invoke('get_config', { key: 'scrape_remarks' }) as string) || '{}'
     try {

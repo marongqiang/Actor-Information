@@ -13,7 +13,7 @@
       <div v-for="actress in store.actresses" :key="actress.id" class="actress-card"
           @contextmenu.prevent="onContextMenu($event, actress)">
         <div class="avatar-container" @click.stop="goDetail(actress.id)">
-          <img v-if="actress.avatar_local" :src="imageUrl(actress.avatar_local)" class="avatar-img" />
+          <img v-if="actress.avatar_local && avatarSrc(actress.avatar_local)" :src="avatarSrc(actress.avatar_local)" class="avatar-img" />
           <div v-else class="avatar-placeholder">
             <el-icon :size="36"><UserFilled /></el-icon>
           </div>
@@ -64,6 +64,19 @@ import { Loading, UserFilled } from '@element-plus/icons-vue'
 import type { ActressItem, ActressGroupItem } from '@/types'
 import { imageUrl } from '@/composables/useImageUrl'
 
+// Reactive image cache
+const imgSrc = reactive<Record<string, string>>({})
+function avatarSrc(path: string | null): string {
+  return path ? (imgSrc[path] || '') : ''
+}
+async function preloadImages() {
+  for (const a of store.actresses) {
+    if (a.avatar_local && !imgSrc[a.avatar_local]) {
+      imgSrc[a.avatar_local] = await imageUrl(a.avatar_local)
+    }
+  }
+}
+
 const route = useRoute()
 const router = useRouter()
 const store = useActressStore()
@@ -94,6 +107,8 @@ const actressGroups = ref<ActressGroupItem[]>([])
 async function doSearch(resetPage = true) { if (resetPage) page.value = 1; store.fetchPaginated(page.value, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 function onPageChange(p: number) { page.value = p; store.fetchPaginated(p, pageSize.value, search.value || undefined, undefined, undefined, undefined, filterGroupId.value) }
 function onPageSizeChange() { doSearch(true) }
+
+watch(() => store.actresses, () => { preloadImages() })
 
 function goDetail(id: number) { router.push(`/actress/${id}`) }
 

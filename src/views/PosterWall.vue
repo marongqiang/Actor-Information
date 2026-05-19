@@ -35,8 +35,8 @@
       >
         <div class="poster-container">
           <img
-            v-if="movie.poster_local"
-            :src="posterUrl(movie)"
+            v-if="posterSrc(movie)"
+            :src="posterSrc(movie)"
             :alt="movie.title"
             class="poster-img"
           />
@@ -98,7 +98,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { Loading, PictureFilled } from '@element-plus/icons-vue'
 import type { MovieItem, GroupItem } from '@/types'
-import { imageUrl } from '@/composables/useImageUrl'
+import { imageUrl, imageUrlCached } from '@/composables/useImageUrl'
 
 const route = useRoute()
 const store = useLibraryStore()
@@ -127,10 +127,22 @@ const years = computed(() => {
   return Array.from({ length: 40 }, (_, i) => y - i)
 })
 
-// Poster images loaded via Tauri asset protocol
-function posterUrl(movie: MovieItem): string {
-  return imageUrl(movie.poster_local)
+// Poster images loaded via async base64 with reactive cache
+const posterUrls = reactive<Record<string, string>>({})
+
+function posterSrc(movie: MovieItem): string {
+  return posterUrls[movie.file_id] || ''
 }
+
+async function loadPoster(movie: MovieItem) {
+  if (movie.poster_local && !(movie.file_id in posterUrls)) {
+    posterUrls[movie.file_id] = await imageUrl(movie.poster_local)
+  }
+}
+
+watch(() => store.movies, (movies) => {
+  for (const m of movies) { loadPoster(m) }
+}, { immediate: true })
 
 function doSearch() {
   currentPage.value = 1

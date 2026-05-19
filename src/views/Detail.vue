@@ -97,19 +97,21 @@ onMounted(async () => {
   movie.value = await invoke('get_movie_detail', { fileId })
   groups.value = movie.value?.groups || []
 
-  // Load poster via asset protocol
+  // Load poster
   if (movie.value?.poster_local) {
-    posterUrl.value = imageUrl(movie.value.poster_local)
+    posterUrl.value = await imageUrl(movie.value.poster_local)
   }
 
   // Load actress avatars (parallel)
   if (movie.value?.actors) {
-    const results = await Promise.allSettled(
+    await Promise.allSettled(
       movie.value.actors.map(async (name: string) => {
-        const found: any = await invoke('find_actress', { name })
-        if (found?.avatar_local) {
-          actorAvatars.value[name] = imageUrl(found.avatar_local)
-        }
+        try {
+          const found: any = await invoke('find_actress', { name })
+          if (found?.avatar_local) {
+            actorAvatars.value[name] = await imageUrl(found.avatar_local)
+          }
+        } catch { /* ignore */ }
       })
     )
   }

@@ -82,7 +82,7 @@ onMounted(async () => {
       actress.value = found
       aliases.value = await invoke('get_actress_aliases', { actressId: id })
       if (found.avatar_local) {
-        img.value = imageUrl(found.avatar_local)
+        img.value = await imageUrl(found.avatar_local)
       }
       // Load photos from local folder (parallel batch via IPC)
       if (found.local_folder_name) {
@@ -98,7 +98,12 @@ onMounted(async () => {
       // Load movies (use asset protocol for poster paths)
       if (found.name) {
         const m: any = await invoke('get_actress_movies', { actressName: found.name })
-        movies.value = (m || []).map((x: any) => ({ ...x, poster_b64: imageUrl(x.poster_local) }))
+        movies.value = (m || []).map((x: any) => ({ ...x, poster_b64: '' }))
+        await Promise.allSettled(
+          movies.value.filter((mv: any) => mv.poster_local).map(async (mv: any) => {
+            mv.poster_b64 = await imageUrl(mv.poster_local)
+          })
+        )
       }
     }
   } catch(e) { console.error(e) }
