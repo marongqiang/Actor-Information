@@ -972,7 +972,7 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
 
     // Try ALL results and merge data from multiple providers
     // Each field picks the best value across all sources
-    log::info!("MetaTube 共{}个结果, 全部尝试并合并最佳字段", results.len());
+    log::info!("═══ MetaTube 开始(共{}源) ═══", results.len());
 
     let mut best_title = query.to_string();
     let mut best_poster = None;
@@ -987,108 +987,80 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     for (idx, item) in results.iter().enumerate() {
         let provider_name = item["provider"].as_str().unwrap_or("metatube");
         let movie_id = item["id"].as_str().unwrap_or("");
+        let title_s = item["title"].as_str().unwrap_or("-");
 
-        // Merge search-level fields (longest title, longest overview-worthy name)
-        if let Some(t) = item["title"].as_str() {
-            if t.len() > best_title.len() { best_title = t.to_string(); }
+        // Merge search-level fields
+        if title_s.len() > best_title.len() { best_title = title_s.to_string(); }
+        if best_year.is_none() {
+            if let Some(d) = item["release_date"].as_str() { best_year = d[..4].parse().ok(); }
         }
-        if let Some(d) = item["release_date"].as_str() {
-            if best_year.is_none() { best_year = d[..4].parse().ok(); }
+        if best_rating.is_none() {
+            if let Some(s) = item["score"].as_f64() { best_rating = Some(s); }
         }
-        if let Some(s) = item["score"].as_f64() {
-            if best_rating.is_none() || s > best_rating.unwrap_or(0.0) { best_rating = Some(s); }
-        }
-        // Merge search-level poster (prefer larger: cover_url > thumb_url)
         if best_poster.is_none() {
-            best_poster = item["cover_url"].as_str()
-                .or_else(|| item["thumb_url"].as_str())
-                .map(|s| s.to_string());
+            best_poster = item["cover_url"].as_str().or_else(|| item["thumb_url"].as_str()).map(|s| s.to_string());
         }
-        // Merge search-level actors
         if let Some(arr) = item["actors"].as_array() {
-            for a in arr {
-                if let Some(n) = a.as_str() {
-                    if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); }
-                }
-            }
+            for a in arr { if let Some(n) = a.as_str() { if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); } } }
         }
 
-        // Fetch info API for full details
-        if provider_name.is_empty() || movie_id.is_empty() { continue; }
+        // Fetch info API
+        if provider_name.is_empty() || movie_id.is_empty() {
+            log::info!("  {:>2}. {:<20} │ 无ID,跳过", idx+1, provider_name);
+            continue;
+        }
         let info_url = format!("{}/v1/movies/{}/{}", base, provider_name, movie_id);
+        let mut contributed = Vec::new();
         match get_client().get(&info_url).timeout(std::time::Duration::from_secs(5)).send() {
             Ok(resp) => {
                 if let Ok(body2) = resp.text() {
                     if let Ok(json2) = serde_json::from_str::<serde_json::Value>(&body2) {
                         if json2["error"]["message"].is_null() {
                             let info = &json2["data"];
-                            let mut contributed = false;
+                            let sum_len = info["summary"].as_str().map_or(0, |s| s.len());
+                            let rt = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()).unwrap_or(0);
+                            let ac = info["actors"].as_array().map_or(0, |a| a.len());
+                            let gc = info["genres"].as_array().map_or(0, |g| g.len());
+                            let has_cover = info["big_cover_url"].as_str().or(info["cover_url"].as_str()).is_some();
 
-                            // Overview: take longest
+                            // Apply contributions
                             if let Some(s) = info["summary"].as_str() {
-                                if s.len() > best_overview.as_ref().map_or(0, |o: &String| o.len()) {
-                                    best_overview = Some(s.to_string());
-                                    contributed = true;
-                                }
+                                let cur_len = best_overview.as_ref().map(|o: &String| o.len()).unwrap_or(0);
+                                if s.len() > cur_len { best_overview = Some(s.to_string()); contributed.push("简介"); }
                             }
-                            // Runtime: take longest non-zero
-                            if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) {
-                                if r > 0 && r > best_runtime.unwrap_or(0) as i64 {
-                                    best_runtime = Some(r as i32);
-                                    contributed = true;
-                                }
-                            }
-                            // Actors: merge unique
+                            if rt > 0 && rt > best_runtime.unwrap_or(0) as i64 { best_runtime = Some(rt as i32); contributed.push("时长"); }
                             if let Some(arr) = info["actors"].as_array() {
-                                for a in arr {
-                                    if let Some(n) = a.as_str() {
-                                        if !all_actors.contains(&n.to_string()) {
-                                            all_actors.push(n.to_string());
-                                            contributed = true;
-                                        }
-                                    }
-                                }
+                                for a in arr { if let Some(n) = a.as_str() { if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); contributed.push("演员"); } } }
                             }
-                            // Genres: merge unique
                             if let Some(arr) = info["genres"].as_array() {
-                                for g in arr {
-                                    if let Some(n) = g.as_str() {
-                                        if !all_genres.contains(&n.to_string()) {
-                                            all_genres.push(n.to_string());
-                                            contributed = true;
-                                        }
-                                    }
-                                }
+                                for g in arr { if let Some(n) = g.as_str() { if !all_genres.contains(&n.to_string()) { all_genres.push(n.to_string()); contributed.push("类型"); } } }
                             }
-                            // Poster: prefer big cover
                             if best_poster.is_none() || best_poster.as_ref().map_or(true, |p| p.contains("thumb")) {
-                                if let Some(big) = info["big_cover_url"].as_str() {
-                                    if !big.is_empty() { best_poster = Some(big.to_string()); contributed = true; }
-                                } else if let Some(cov) = info["cover_url"].as_str() {
-                                    if !cov.is_empty() { best_poster = Some(cov.to_string()); contributed = true; }
-                                }
+                                if let Some(big) = info["big_cover_url"].as_str() { if !big.is_empty() { best_poster = Some(big.to_string()); contributed.push("封面"); } }
+                                else if let Some(cov) = info["cover_url"].as_str() { if !cov.is_empty() { best_poster = Some(cov.to_string()); contributed.push("封面"); } }
                             }
-                            // Rating
-                            if best_rating.is_none() {
-                                if let Some(s) = info["score"].as_f64() {
-                                    best_rating = Some(s); contributed = true;
-                                }
-                            }
-                            if contributed { sources_used.push(format!("{}({})", provider_name, idx)); }
+                            if best_rating.is_none() { if let Some(s) = info["score"].as_f64() { best_rating = Some(s); contributed.push("评分"); } }
+
+                            let contrib_str = if contributed.is_empty() {"无新贡献".to_string()} else {format!("贡献: {}", contributed.join(","))};
+                            log::info!("  {:>2}. {:<20} │ 演员={} 类型={} 时长={} 简介={}B 封面={} │ {}",
+                                idx+1, provider_name, ac, gc, rt, sum_len, if has_cover {"有"} else {"无"}, contrib_str);
+                            if !contributed.is_empty() { sources_used.push(provider_name.to_string()); }
+                        } else {
+                            log::info!("  {:>2}. {:<20} │ API返回错误", idx+1, provider_name);
                         }
                     }
                 }
             }
-            Err(e) => log::warn!("MetaTube 详情[{}] {}: {}", idx, provider_name, e),
+            Err(e) => log::info!("  {:>2}. {:<20} │ 请求超时/失败", idx+1, provider_name),
         }
     }
+
+    log::info!("═══ MetaTube 合并: 标题={} 演员={}人 类型={}个 时长={:?} 来源={:?} ═══",
+        truncate_log(&best_title, 30), all_actors.len(), all_genres.len(), best_runtime, sources_used);
 
     if best_title == query && all_actors.is_empty() && best_poster.is_none() {
         return Err(CommandError::scrape_failed("MetaTube 所有源均无有效数据"));
     }
-
-    log::info!("MetaTube 合并结果: title={} year={:?} actors={} genres={} runtime={:?} sources={:?}",
-        truncate_log(&best_title, 40), best_year, all_actors.len(), all_genres.len(), best_runtime, sources_used);
 
     Ok(ScrapeResult {
         source: format!("metatube({})", sources_used.join(",")),
