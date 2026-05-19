@@ -15,6 +15,12 @@ async function checkSfw(): Promise<boolean> {
   return sfwMode
 }
 
+/** Called when SFW mode toggle changes — clear cache so images reload */
+export function resetSfwMode() {
+  sfwLoaded = false
+  cache.clear()
+}
+
 /**
  * Load a local image file and return as base64 data URL.
  * Deduplicates concurrent requests and caches results in memory.

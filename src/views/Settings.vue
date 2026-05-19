@@ -342,9 +342,13 @@ const mergeFilePattern = ref('{name}_{index}{ext}')
 const mergeDryRun = ref(true)
 
 // SFW Mode
+import { resetSfwMode } from '@/composables/useImageUrl'
 const sfwMode = ref(false)
 async function saveSfwMode() {
   await invoke('set_config', { key: 'sfw_mode', value: String(sfwMode.value) })
+  resetSfwMode()
+  // Force refresh of current page posters
+  window.dispatchEvent(new CustomEvent('sfw-changed'))
 }
 
 // MetaTube SDK update
