@@ -157,15 +157,24 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
             let filename = format!("poster.{}", ext);
             let filepath = code_dir.join(&filename);
             log::info!("下载海报: {} -> {}", poster_url, filepath.display());
-            match get_download_client().get(poster_url).send() {
+            match get_download_client().get(poster_url)
+                .header("Referer", "https://www.javbus.com/")
+                .send() {
                 Ok(resp) => {
                     if let Ok(bytes) = resp.bytes() {
-                        if bytes.len() > 1000 {
+                        // Check it's actually an image (not HTML error page)
+                        let is_image = bytes.len() > 1000 && (
+                            bytes.starts_with(b"\xff\xd8\xff") || // JPEG
+                            bytes.starts_with(b"\x89PNG") ||     // PNG
+                            bytes.starts_with(b"RIFF") ||         // WEBP
+                            bytes.starts_with(b"GIF8")            // GIF
+                        );
+                        if is_image {
                             let _ = std::fs::write(&filepath, &bytes);
                             poster_local = Some(filepath.to_string_lossy().to_string());
                             log::info!("海报下载成功: {} bytes", bytes.len());
                         } else {
-                            log::warn!("海报图片太小({} bytes),可能不是图片", bytes.len());
+                            log::warn!("海报不是图片格式(可能是反爬页面), 大小={} bytes", bytes.len());
                         }
                     }
                 }
