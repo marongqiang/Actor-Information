@@ -31,6 +31,30 @@ fn build_scrape_client() -> reqwest::blocking::Client {
         .expect("Failed to build scrape client")
 }
 
+/// Client for external downloads (with proxy) — posters, covers, etc.
+fn get_download_client() -> &'static reqwest::blocking::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        let mut builder = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0");
+        if let Ok(Some(enabled)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_enabled")) {
+            if enabled == "true" {
+                if let Ok(Some(host)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_host")) {
+                    let port = db::with_db(|c| crate::db::queries::get_config(c, "proxy_port"))
+                        .ok().flatten().and_then(|p| p.parse().ok()).unwrap_or(1080);
+                    let proxy_url = format!("http://{}:{}", host, port);
+                    if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+                        builder = builder.proxy(proxy);
+                    }
+                }
+            }
+        }
+        builder.build().expect("Failed to build download client")
+    })
+}
+
 fn get_client() -> &'static reqwest::blocking::Client {
     use std::sync::OnceLock;
     static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
@@ -133,7 +157,7 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
             let filename = format!("poster.{}", ext);
             let filepath = code_dir.join(&filename);
             log::info!("下载海报: {} -> {}", poster_url, filepath.display());
-            match get_client().get(poster_url).send() {
+            match get_download_client().get(poster_url).send() {
                 Ok(resp) => {
                     if let Ok(bytes) = resp.bytes() {
                         if bytes.len() > 1000 {

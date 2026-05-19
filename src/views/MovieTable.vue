@@ -108,14 +108,24 @@ const selectedRows = ref<MovieItem[]>([])
 const sortProp = ref('updated_at')
 const sortOrder = ref('desc')
 
-// Scrape progress (floating, non-blocking)
-const scraping = ref(false)
-const scrapePct = ref(0)
-const scrapeDone = ref(false)
-const scrapeOk = ref(0)
-const scrapeFail = ref(0)
-const scrapeDone2 = ref(0)
-const scrapeTotal = ref(0)
+// Scrape progress (floating, non-blocking, persists across navigation)
+const win = window as any
+if (!win._scrapeState) win._scrapeState = { scraping: false, pct: 0, done: false, ok: 0, fail: 0, done2: 0, total: 0, timer: null as any }
+const scrapeState = win._scrapeState
+const scraping = ref(scrapeState.scraping)
+const scrapePct = ref(scrapeState.pct)
+const scrapeDone = ref(scrapeState.done)
+const scrapeOk = ref(scrapeState.ok)
+const scrapeFail = ref(scrapeState.fail)
+const scrapeDone2 = ref(scrapeState.done2)
+const scrapeTotal = ref(scrapeState.total)
+
+function syncScrapeState() {
+  Object.assign(scrapeState, {
+    scraping: scraping.value, pct: scrapePct.value, done: scrapeDone.value,
+    ok: scrapeOk.value, fail: scrapeFail.value, done2: scrapeDone2.value, total: scrapeTotal.value
+  })
+}
 
 function formatSize(bytes: number) {
   if (!bytes) return '-'
@@ -185,10 +195,15 @@ async function batchScrape() {
       scrapeOk.value = stats.success
       scrapeFail.value = stats.failed
       scrapePct.value = stats.total > 0 ? Math.round(done / stats.total * 100) : 0
+      syncScrapeState()
       if (stats.pending === 0 && done > 0) {
-        // All done
-        scrapeDone.value = true
-        scraping.value = false
+        // All done — close after 10 seconds
+        scrapeDone.value = true; syncScrapeState()
+        if (scrapeState.timer) clearTimeout(scrapeState.timer)
+        scrapeState.timer = setTimeout(() => {
+          scraping.value = false; scrapeDone.value = false
+          syncScrapeState()
+        }, 10000)
         clearInterval(pollTimer)
         doSearch()
       } else if (done > 0) {

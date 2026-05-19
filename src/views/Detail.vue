@@ -1,16 +1,14 @@
 <template>
   <div class="detail-page" v-if="movie">
-    <div class="backdrop" v-if="movie.backdrop_local">
-      <img :src="assetUrl(movie.backdrop_local)" alt="" />
-    </div>
     <div class="detail-content">
       <div class="poster-col">
-        <img v-if="movie.poster_local" :src="assetUrl(movie.poster_local)" class="detail-poster" />
+        <img v-if="posterUrl" :src="posterUrl" class="detail-poster" />
         <div v-else class="detail-poster placeholder"><el-icon :size="64"><PictureFilled /></el-icon></div>
       </div>
       <div class="info-col">
-        <h1>{{ movie.title }}</h1>
-        <p v-if="movie.original_title" class="original-title">{{ movie.original_title }}</p>
+        <h1>{{ movie.chinese_name || movie.title }}</h1>
+        <p v-if="movie.chinese_name && movie.original_title" class="original-title">{{ movie.original_title }}</p>
+        <p v-else-if="movie.original_title && !movie.chinese_name" class="original-title">{{ movie.original_title }}</p>
         <div class="meta-tags">
           <el-tag v-if="movie.year">{{ movie.year }}</el-tag>
           <el-tag v-if="movie.rating" type="warning">★ {{ movie.rating.toFixed(1) }}</el-tag>
@@ -19,13 +17,14 @@
         </div>
         <p class="overview" v-if="movie.overview">{{ movie.overview }}</p>
         <div class="detail-meta">
-          <p v-if="movie.director"><strong>导演：</strong>{{ movie.director }}</p>
-          <p v-if="movie.actors?.length"><strong>演员：</strong>
-            <span v-for="(name, i) in movie.actors" :key="name">
-              <a class="actor-link" @click.stop="goActress(name)">{{ name }}</a>
-              <span v-if="i < movie.actors.length - 1"> / </span>
-            </span>
-          </p>
+          <p v-if="movie.actors?.length"><strong>演员：</strong></p>
+          <div v-if="movie.actors?.length" class="actor-list">
+            <div v-for="name in movie.actors" :key="name" class="actor-chip" @click.stop="goActress(name)">
+              <img v-if="actorAvatars[name]" :src="actorAvatars[name]" class="actor-avatar" />
+              <span v-else class="actor-avatar placeholder"></span>
+              <span>{{ name }}</span>
+            </div>
+          </div>
           <p><strong>文件：</strong>{{ movie.file_name }}</p>
           <p><strong>大小：</strong>{{ formatSize(movie.file_size) }}</p>
         </div>
@@ -53,7 +52,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import type { MovieDetail, GroupItem } from '@/types'
 import { Loading, PictureFilled, VideoPlay, Connection } from '@element-plus/icons-vue'
@@ -62,8 +61,8 @@ const route = useRoute()
 const router = useRouter()
 const movie = ref<MovieDetail | null>(null)
 const groups = ref<GroupItem[]>([])
-
-function assetUrl(path: string) { return convertFileSrc(path.replace(/\\/g, '/')) }
+const posterUrl = ref('')
+const actorAvatars = ref<Record<string, string>>({})
 
 function formatSize(bytes: number) {
   if (!bytes) return '未知'
@@ -104,6 +103,24 @@ onMounted(async () => {
   const fileId = route.params.fileId as string
   movie.value = await invoke('get_movie_detail', { fileId })
   groups.value = movie.value?.groups || []
+
+  // Load poster as base64
+  if (movie.value?.poster_local) {
+    try { posterUrl.value = await invoke('read_image_base64', { path: movie.value.poster_local }) as string }
+    catch { /* ignore */ }
+  }
+
+  // Load actress avatars
+  if (movie.value?.actors) {
+    for (const name of movie.value.actors) {
+      try {
+        const found: any = await invoke('find_actress', { name })
+        if (found?.avatar_local) {
+          actorAvatars.value[name] = await invoke('read_image_base64', { path: found.avatar_local }) as string
+        }
+      } catch { /* ignore */ }
+    }
+  }
 })
 </script>
 
@@ -124,6 +141,11 @@ onMounted(async () => {
 .meta-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
 .overview { color: #bbb; line-height: 1.6; margin-bottom: 16px; }
 .detail-meta p { margin: 6px 0; color: #999; }
+.actor-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.actor-chip { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 10px; background: #1a1a2e; border-radius: 20px; font-size: 13px; }
+.actor-chip:hover { background: #2a2a4a; }
+.actor-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.actor-avatar.placeholder { background: #2a2a4a; }
 .actions { display: flex; gap: 10px; margin-top: 20px; }
 .groups-section { margin-top: 16px; }
 .loading { text-align: center; padding: 60px; color: #888; }

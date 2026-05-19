@@ -36,13 +36,12 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
     let total = file_ids.len();
     let app_handle = APP_HANDLE.get().cloned();
 
-    // Mark all as pending + set started_at
-    let now = crate::db::now_ts();
+    // Mark all as pending (no started_at yet — set per-file later)
     for fid in &file_ids {
         let fid2 = fid.clone();
         crate::db::with_db(move |conn| {
-            conn.execute("UPDATE movies SET scrape_status=1, scrape_started_at=?1, scrape_error=NULL WHERE file_id=?2",
-                rusqlite::params![now, fid2.as_str()])?;
+            conn.execute("UPDATE movies SET scrape_status=1, scrape_error=NULL WHERE file_id=?1",
+                [fid2.as_str()])?;
             Ok(())
         }).ok();
     }
@@ -57,6 +56,14 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
             }).unwrap_or_default();
 
             log::info!("[{}/{}] 刮削 {} ...", i+1, total, file_name);
+
+            // Set real per-file start time
+            let started = crate::db::now_ts();
+            let fid_start = fid.clone();
+            crate::db::with_db(move |c| {
+                c.execute("UPDATE movies SET scrape_started_at=?1 WHERE file_id=?2", rusqlite::params![started, fid_start.as_str()])?;
+                Ok(())
+            }).ok();
 
             let (ok, err_msg) = match scrape_manager::scrape_file(fid, &sources) {
                 Ok(results) if !results.is_empty() => {
