@@ -272,6 +272,11 @@ pub fn set_genre_translation(conn: &Connection, ja_name: &str, cn_name: &str) ->
     Ok(())
 }
 
+pub fn delete_genre_translation(conn: &Connection, ja_name: &str) -> CommandResult<()> {
+    conn.execute("DELETE FROM genre_translations WHERE ja_name=?1", [ja_name])?;
+    Ok(())
+}
+
 pub fn get_all_genre_translations(conn: &Connection) -> CommandResult<Vec<(String, String)>> {
     let mut stmt = conn.prepare("SELECT ja_name, cn_name FROM genre_translations ORDER BY ja_name")?;
     let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?

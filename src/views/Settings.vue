@@ -367,7 +367,7 @@ async function saveGenreRow(row: GenreRow) {
   }
 }
 async function deleteGenreRow(row: GenreRow) {
-  await invoke('set_genre_translation', { jaName: row.ja_name, cnName: '' })
+  await invoke('delete_genre_translation', { jaName: row.ja_name })
   genreLib.value = genreLib.value.filter(r => r.ja_name !== row.ja_name)
 }
 async function addGenreRow() {

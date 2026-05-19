@@ -249,3 +249,8 @@ pub fn get_genre_translations() -> Result<Vec<(String, String)>, CommandError> {
 pub fn set_genre_translation(ja_name: String, cn_name: String) -> Result<(), CommandError> {
     db::with_db(|conn| queries::set_genre_translation(conn, &ja_name, &cn_name))
 }
+
+#[tauri::command]
+pub fn delete_genre_translation(ja_name: String) -> Result<(), CommandError> {
+    db::with_db(|conn| queries::delete_genre_translation(conn, &ja_name))
+}
