@@ -974,8 +974,9 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                         if json2["error"]["message"].is_null() {
                             let info = &json2["data"];
                             overview = info["summary"].as_str().map(|s| s.to_string());
-                            runtime = info["runtime"].as_i64().map(|v| v as i32);
-                            director = info["director"].as_str().map(|s| s.to_string());
+                            runtime = info["runtime"].as_i64().map(|v| v as i32)
+                                .or_else(|| info["duration"].as_i64().map(|v| v as i32));
+                            log::info!("MetaTube runtime raw: {:?} -> {:?}", info["runtime"], runtime);
                             if let Some(arr) = info["actors"].as_array() {
                                 full_actors.clear();
                                 for a in arr {

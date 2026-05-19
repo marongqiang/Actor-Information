@@ -70,23 +70,20 @@
       <el-pagination v-if="total > pageSize" :current-page="page" :page-size="pageSize" :total="total"
         layout="prev, pager, next" @current-change="onPageChange" background size="small" />
       <el-select v-model="pageSize" size="small" style="width: 100px; margin-left: 12px;" @change="onPageSizeChange">
+        <el-option :value="10" label="10条/页" />
         <el-option :value="20" label="20条/页" />
         <el-option :value="50" label="50条/页" />
         <el-option :value="100" label="100条/页" />
+        <el-option :value="200" label="200条/页" />
+        <el-option :value="300" label="300条/页" />
       </el-select>
     </div>
 
-    <!-- 刮削进度弹窗 -->
-    <el-dialog v-model="scrapeDialog" title="刮削进度" width="400px" :close-on-click-modal="false" :show-close="false">
-      <div style="text-align: center; padding: 10px;">
-        <el-progress :percentage="scrapePct" :stroke-width="12" :status="scrapeDone ? 'success' : undefined" />
-        <p style="margin-top: 12px; color: #e0e0e0;">{{ scrapeText }}</p>
-        <p v-if="scrapeDone" style="margin-top: 8px; color: #67c23a;">✓ 成功 {{ scrapeOk }} / 失败 {{ scrapeFail }}</p>
-      </div>
-      <template #footer v-if="scrapeDone">
-        <el-button @click="scrapeDialog=false; doSearch()">关闭</el-button>
-      </template>
-    </el-dialog>
+    <!-- 刮削进度浮窗（右上角，不阻塞操作） -->
+    <div v-if="scraping" class="scrape-float">
+      <span>[{{ scrapeDone2 }}/{{ scrapeTotal }}] 成功{{ scrapeOk }} 失败{{ scrapeFail }}</span>
+      <el-progress :percentage="scrapePct" :stroke-width="4" :status="scrapeDone ? 'success' : undefined" style="width:120px;" />
+    </div>
   </div>
 </template>
 
@@ -111,13 +108,14 @@ const selectedRows = ref<MovieItem[]>([])
 const sortProp = ref('updated_at')
 const sortOrder = ref('desc')
 
-// Scrape progress
-const scrapeDialog = ref(false)
+// Scrape progress (floating, non-blocking)
+const scraping = ref(false)
 const scrapePct = ref(0)
 const scrapeDone = ref(false)
-const scrapeText = ref('')
 const scrapeOk = ref(0)
 const scrapeFail = ref(0)
+const scrapeDone2 = ref(0)
+const scrapeTotal = ref(0)
 
 function formatSize(bytes: number) {
   if (!bytes) return '-'
@@ -168,38 +166,36 @@ function onSortChange(sort: any) {
 async function batchScrape() {
   if (!selectedRows.value.length) return
   const ids = selectedRows.value.map(r => r.file_id)
-  scrapeDialog.value = true; scrapePct.value = 0; scrapeDone.value = false
-  scrapeText.value = `正在刮削 ${ids.length} 部影片...`; scrapeOk.value = 0; scrapeFail.value = 0
+  scraping.value = true; scrapePct.value = 0; scrapeDone.value = false
+  scrapeOk.value = 0; scrapeFail.value = 0; scrapeTotal.value = ids.length; scrapeDone2.value = 0
 
-  // Start scrape in background, poll progress
-  const scrapePromise = invoke('scrape_batch', { fileIds: ids })
+  // Fire-and-forget: don't await, let it run in background
+  invoke('scrape_batch', { fileIds: ids }).then((result: any) => {
+    scrapeOk.value = result.success; scrapeFail.value = result.failed
+  }).catch((e: any) => {
+    ElMessage.error('刮削失败: ' + (e?.message || e))
+  })
+
+  // Poll progress for selected batch only
   const pollTimer = setInterval(async () => {
     try {
-      const stats: any = await invoke('get_scrape_stats')
+      const stats: any = await invoke('get_batch_progress', { fileIds: ids })
       const done = stats.success + stats.failed
-      const selTotal = ids.length
-      if (done > 0) {
-        scrapePct.value = Math.round(done / selTotal * 100)
-        scrapeOk.value = stats.success
-        scrapeFail.value = stats.failed
-        scrapeText.value = `[${done}/${selTotal}] 成功${stats.success} 失败${stats.failed}`
-        doSearch() // refresh table to show per-row status changes
+      scrapeDone2.value = done
+      scrapeOk.value = stats.success
+      scrapeFail.value = stats.failed
+      scrapePct.value = stats.total > 0 ? Math.round(done / stats.total * 100) : 0
+      if (stats.pending === 0 && done > 0) {
+        // All done
+        scrapeDone.value = true
+        scraping.value = false
+        clearInterval(pollTimer)
+        doSearch()
+      } else if (done > 0) {
+        doSearch() // refresh table periodically
       }
-    } catch { /* ignore poll errors */ }
-  }, 1000)
-
-  try {
-    const result: any = await scrapePromise
-    clearInterval(pollTimer)
-    scrapePct.value = 100; scrapeDone.value = true
-    scrapeOk.value = result.success; scrapeFail.value = result.failed
-    scrapeText.value = `刮削完成: 成功${result.success} 失败${result.failed}`
-    doSearch()
-  } catch(e: any) {
-    clearInterval(pollTimer)
-    scrapeDialog.value = false
-    ElMessage.error('刮削失败: ' + (e?.message || e))
-  }
+    } catch { /* ignore */ }
+  }, 1500)
 }
 
 async function batchHide() {
@@ -223,5 +219,9 @@ onMounted(() => { fetchData() })
 .toolbar { flex-shrink: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; background: #1a1a2e; border-radius: 8px; margin-bottom: 10px; }
 .toolbar h2 { font-size: 16px; }
 .batch-actions { color: #409eff; font-size: 12px; margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.scrape-float { position: fixed; top: 12px; right: 20px; z-index: 9999;
+  background: #252540; border: 1px solid #3a3a5a; border-radius: 6px;
+  padding: 6px 14px; display: flex; align-items: center; gap: 12px;
+  font-size: 13px; color: #e0e0e0; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
 .table-footer { flex-shrink: 0; display: flex; justify-content: center; align-items: center; padding: 10px 0; }
 </style>

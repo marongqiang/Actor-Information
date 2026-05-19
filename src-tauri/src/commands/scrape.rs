@@ -136,3 +136,28 @@ pub fn get_scrape_stats() -> Result<ScrapeStats, CommandError> {
         Ok(ScrapeStats { pending, success, failed, total })
     })
 }
+
+#[tauri::command]
+pub fn get_batch_progress(file_ids: Vec<String>) -> Result<ScrapeStats, CommandError> {
+    if file_ids.is_empty() { return Ok(ScrapeStats { pending:0, success:0, failed:0, total:0 }); }
+    crate::db::with_db(|conn| {
+        let placeholders = file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let total = file_ids.len() as i64;
+        let sql = format!("SELECT COUNT(*) FROM movies WHERE file_id IN ({}) AND scrape_status=2", placeholders);
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = file_ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let success: i64 = stmt.query_row(params.as_slice(), |r| r.get(0))?;
+
+        let sql = format!("SELECT COUNT(*) FROM movies WHERE file_id IN ({}) AND scrape_status=3", placeholders);
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = file_ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let failed: i64 = stmt.query_row(params.as_slice(), |r| r.get(0))?;
+
+        let sql = format!("SELECT COUNT(*) FROM movies WHERE file_id IN ({}) AND scrape_status=1", placeholders);
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = file_ids.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let pending: i64 = stmt.query_row(params.as_slice(), |r| r.get(0))?;
+
+        Ok(ScrapeStats { pending, success, failed, total })
+    })
+}
