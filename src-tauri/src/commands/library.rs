@@ -265,3 +265,8 @@ pub fn delete_genre_translation(ja_name: String) -> Result<(), CommandError> {
     log::info!("删除标签翻译: {}", ja_name);
     db::with_db(|conn| queries::delete_genre_translation(conn, &ja_name))
 }
+
+#[tauri::command]
+pub fn get_scrape_logs() -> Result<Vec<queries::ScrapeLogRow>, CommandError> {
+    db::with_db(|conn| queries::get_scrape_logs(conn))
+}

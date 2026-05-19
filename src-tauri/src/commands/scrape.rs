@@ -36,11 +36,12 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
     let total = file_ids.len();
     let app_handle = APP_HANDLE.get().cloned();
 
-    // Mark all as scraping
+    // Mark all as scraping + set scrape_log pending
     for fid in &file_ids {
         let fid2 = fid.clone();
         crate::db::with_db(move |conn| {
             conn.execute("UPDATE movies SET scrape_status=1 WHERE file_id=?1", [fid2.as_str()])?;
+            crate::db::queries::set_scrape_pending(conn, &fid2)?;
             Ok(())
         }).ok();
     }
@@ -56,15 +57,25 @@ pub async fn scrape_batch(file_ids: Vec<String>) -> Result<BatchScrapeResult, cr
 
             log::info!("[{}/{}] 刮削 {} ...", i+1, total, file_name);
 
-            match scrape_manager::scrape_file(fid, &sources) {
+            let (ok, err_msg) = match scrape_manager::scrape_file(fid, &sources) {
                 Ok(results) if !results.is_empty() => {
                     match scrape_manager::apply_scrape_result(fid, &results[0]) {
-                        Ok(_) => success += 1,
-                        Err(_) => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
+                        Ok(_) => (true, None),
+                        Err(e) => (false, Some(format!("{}", e))),
                     }
                 }
-                _ => { crate::db::with_db(|c| { c.execute("UPDATE movies SET scrape_status=3 WHERE file_id=?1", [fid.as_str()])?; Ok(()) }).ok(); failed += 1; }
-            }
+                Err(e) => (false, Some(format!("{}", e))),
+                _ => (false, Some("无结果".into())),
+            };
+            if ok { success += 1; } else { failed += 1; }
+            let fid2 = fid.clone();
+            let err2 = err_msg.clone();
+            crate::db::with_db(move |c| {
+                let st: i32 = if ok { 2 } else { 3 };
+                c.execute("UPDATE movies SET scrape_status=?1 WHERE file_id=?2", rusqlite::params![st, fid2.as_str()])?;
+                crate::db::queries::set_scrape_done(c, &fid2, ok, err2.as_deref())?;
+                Ok(())
+            }).ok();
 
             if let Some(ref handle) = app_handle {
                 let _ = handle.emit("scrape-progress", ScrapeProgress {

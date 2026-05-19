@@ -52,10 +52,14 @@
                 @contextmenu.prevent.stop="onGroupItemCtx($event, 'actress', g.id, g.name)">{{ g.name }}<span class="badge">{{ g.member_count || 0 }}</span></div>
             </template>
           </div>
-          <!-- 影片表格 + 演员表格（独立入口） -->
+          <!-- 影片表格 + 刮削日志 + 演员表格（独立入口） -->
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/movie-table' }" @click="$router.push('/movie-table')">
               <el-icon><VideoCamera /></el-icon><span>影片表格</span></div>
+          </div>
+          <div class="nav-section">
+            <div class="nav-item" :class="{ active: currentRoute === '/scrape-log' }" @click="$router.push('/scrape-log')">
+              <el-icon><Document /></el-icon><span>刮削日志</span></div>
           </div>
           <div class="nav-section">
             <div class="nav-item" :class="{ active: currentRoute === '/actress-table' }" @click="$router.push('/actress-table')">
@@ -106,7 +110,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { PictureFilled, UserFilled, FolderOpened, Setting, StarFilled, ArrowRight, Grid, VideoCamera } from '@element-plus/icons-vue'
+import { PictureFilled, UserFilled, FolderOpened, Setting, StarFilled, ArrowRight, Grid, VideoCamera, Document } from '@element-plus/icons-vue'
 import type { Task, GroupItem, ActressGroupItem } from '@/types'
 
 const route = useRoute()

@@ -284,6 +284,57 @@ pub fn get_all_genre_translations(conn: &Connection) -> CommandResult<Vec<(Strin
     Ok(rows)
 }
 
+// ─── Scrape Log ───
+
+pub fn init_scrape_log(conn: &Connection, file_id: &str) -> CommandResult<()> {
+    conn.execute("INSERT OR IGNORE INTO scrape_log (file_id, status) VALUES (?1, 0)", [file_id])?;
+    Ok(())
+}
+
+pub fn set_scrape_pending(conn: &Connection, file_id: &str) -> CommandResult<()> {
+    let now = crate::db::now_ts();
+    conn.execute("UPDATE scrape_log SET status=1, started_at=?1, error=NULL WHERE file_id=?2", rusqlite::params![now, file_id])?;
+    Ok(())
+}
+
+pub fn set_scrape_done(conn: &Connection, file_id: &str, success: bool, error: Option<&str>) -> CommandResult<()> {
+    let now = crate::db::now_ts();
+    let status = if success { 2 } else { 3 };
+    conn.execute("UPDATE scrape_log SET status=?1, finished_at=?2, error=?3 WHERE file_id=?4",
+        rusqlite::params![status, now, error, file_id])?;
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct ScrapeLogRow {
+    pub file_id: String,
+    pub title: String,
+    pub code: String,
+    pub status: i32,
+    pub started_at: Option<i64>,
+    pub finished_at: Option<i64>,
+    pub error: Option<String>,
+}
+
+pub fn get_scrape_logs(conn: &Connection) -> CommandResult<Vec<ScrapeLogRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT m.file_id, m.title, COALESCE(m.original_title, m.file_name) as code, COALESCE(sl.status, 0), sl.started_at, sl.finished_at, sl.error
+         FROM movies m LEFT JOIN scrape_log sl ON m.file_id = sl.file_id
+         ORDER BY m.file_name")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ScrapeLogRow {
+            file_id: row.get(0)?,
+            title: row.get(1)?,
+            code: row.get(2)?,
+            status: row.get(3)?,
+            started_at: row.get(4)?,
+            finished_at: row.get(5)?,
+            error: row.get(6)?,
+        })
+    })?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
 pub fn get_all_config(conn: &Connection) -> CommandResult<Vec<(String, String)>> {
     let mut stmt = conn.prepare("SELECT key, value FROM config WHERE value IS NOT NULL")?;
     let rows = stmt.query_map([], |row| {
