@@ -1062,6 +1062,51 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
         return Err(CommandError::scrape_failed("MetaTube 所有源均无有效数据"));
     }
 
+    // Step 3: If data is incomplete, try rich providers directly by normalized ID
+    let incomplete = all_actors.is_empty() || all_genres.is_empty() || best_runtime.is_none() || best_overview.is_none();
+    if incomplete {
+        let code_lower = query.trim().to_lowercase().replace(['-', '_', ' '], "");
+        let fallback_providers = ["FANZA", "JAV321", "MGS"];
+        for &fb_name in &fallback_providers {
+            if sources_used.iter().any(|s| s.contains(fb_name)) { continue; } // already tried
+            let fb_url = format!("{}/v1/movies/{}/{}", base, fb_name, code_lower);
+            log::info!("MetaTube 补全尝试: {}", fb_url);
+            match get_client().get(&fb_url).timeout(std::time::Duration::from_secs(8)).send() {
+                Ok(resp) => {
+                    if let Ok(body) = resp.text() {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                            if json["error"]["message"].is_null() {
+                                let info = &json["data"];
+                                if best_overview.is_none() {
+                                    if let Some(s) = info["summary"].as_str() { if !s.is_empty() { best_overview = Some(s.to_string()); } }
+                                }
+                                if best_runtime.is_none() {
+                                    if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) { if r > 0 { best_runtime = Some(r as i32); } }
+                                }
+                                if let Some(arr) = info["actors"].as_array() {
+                                    for a in arr { if let Some(n) = a.as_str() { if !all_actors.contains(&n.to_string()) { all_actors.push(n.to_string()); } } }
+                                }
+                                if let Some(arr) = info["genres"].as_array() {
+                                    for g in arr { if let Some(n) = g.as_str() { if !all_genres.contains(&n.to_string()) { all_genres.push(n.to_string()); } } }
+                                }
+                                if best_rating.is_none() {
+                                    if let Some(s) = info["score"].as_f64() { best_rating = Some(s); }
+                                }
+                                if best_poster.is_none() || best_poster.as_ref().map_or(true, |p| p.contains("thumb")) {
+                                    if let Some(big) = info["big_cover_url"].as_str() { if !big.is_empty() { best_poster = Some(big.to_string()); } }
+                                    else if let Some(cov) = info["cover_url"].as_str() { if !cov.is_empty() { best_poster = Some(cov.to_string()); } }
+                                }
+                                sources_used.push(fb_name.to_string());
+                                log::info!("MetaTube 补全 {}: 演员{} 类型{} 时长{:?}", fb_name, all_actors.len(), all_genres.len(), best_runtime);
+                            }
+                        }
+                    }
+                }
+                Err(e) => log::info!("MetaTube 补全 {} 失败: {}", fb_name, e),
+            }
+        }
+    }
+
     Ok(ScrapeResult {
         source: format!("metatube({})", sources_used.join(",")),
         title: best_title, year: best_year, poster_url: best_poster, backdrop_url: None,
