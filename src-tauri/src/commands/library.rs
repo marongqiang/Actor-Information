@@ -250,6 +250,7 @@ pub struct GenreTranslation {
 pub fn get_genre_translations() -> Result<Vec<GenreTranslation>, CommandError> {
     db::with_db(|conn| {
         let rows = queries::get_all_genre_translations(conn)?;
+        log::info!("标签库查询: {} 条记录", rows.len());
         Ok(rows.into_iter().map(|(ja_name, cn_name)| GenreTranslation { ja_name, cn_name }).collect())
     })
 }
@@ -261,5 +262,6 @@ pub fn set_genre_translation(ja_name: String, cn_name: String) -> Result<(), Com
 
 #[tauri::command]
 pub fn delete_genre_translation(ja_name: String) -> Result<(), CommandError> {
+    log::info!("删除标签翻译: {}", ja_name);
     db::with_db(|conn| queries::delete_genre_translation(conn, &ja_name))
 }
