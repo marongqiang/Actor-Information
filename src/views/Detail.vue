@@ -7,15 +7,15 @@
       </div>
       <div class="info-col">
         <h1>{{ movie.chinese_name || movie.title }}</h1>
-        <p v-if="movie.chinese_name && movie.original_title" class="original-title">{{ movie.original_title }}</p>
-        <p v-else-if="movie.original_title && !movie.chinese_name" class="original-title">{{ movie.original_title }}</p>
+        <p v-if="movie.original_title && movie.original_title !== movie.chinese_name" class="original-title">{{ movie.original_title }}</p>
         <div class="meta-tags">
           <el-tag v-if="movie.year">{{ movie.year }}</el-tag>
           <el-tag v-if="movie.rating" type="warning">★ {{ movie.rating.toFixed(1) }}</el-tag>
           <el-tag v-if="movie.runtime">{{ movie.runtime }} 分钟</el-tag>
           <el-tag v-for="g in movie.genre" :key="g" type="info">{{ g }}</el-tag>
         </div>
-        <p class="overview" v-if="movie.overview">{{ movie.overview }}</p>
+        <p class="overview" v-if="movie.chinese_overview">{{ movie.chinese_overview }}</p>
+        <p class="overview original" v-else-if="movie.overview">{{ movie.overview }}</p>
         <div class="detail-meta">
           <p v-if="movie.actors?.length"><strong>演员：</strong></p>
           <div v-if="movie.actors?.length" class="actor-list">

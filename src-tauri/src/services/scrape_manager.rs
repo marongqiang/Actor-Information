@@ -199,20 +199,46 @@ pub fn apply_scrape_result(file_id: &str, result: &ScrapeResult) -> CommandResul
 
     // Auto-translate title and genres
     if !result.title.is_empty() {
-        auto_translate_movie(file_id, &result.title, result.genre.as_deref());
+        auto_translate_movie(file_id, &result.title, result.overview.as_deref(), result.genre.as_deref());
     }
 
     Ok(())
 }
 
-/// Translate title + genres after scraping
-fn auto_translate_movie(file_id: &str, title: &str, genres: Option<&[String]>) {
-    // Translate title
+/// Translate title + overview + genres after scraping
+fn auto_translate_movie(file_id: &str, title: &str, overview: Option<&str>, genres: Option<&[String]>) {
     auto_translate_title(file_id, title);
-    // Translate genres
+    if let Some(ov) = overview {
+        if !ov.is_empty() { auto_translate_overview(file_id, ov); }
+    }
     if let Some(genres) = genres {
-        if !genres.is_empty() {
-            auto_translate_genres(file_id, genres);
+        if !genres.is_empty() { auto_translate_genres(file_id, genres); }
+    }
+}
+
+fn auto_translate_overview(file_id: &str, overview: &str) {
+    if overview.len() < 20 { return; } // too short, skip
+    let deepseek_key = crate::services::secure_config::get_secure_config("deepseek_api_key")
+        .ok().flatten().unwrap_or_default();
+    let prompt = format!(
+        "你是日本AV影片简介本地化翻译专家。将以下日文AV剧情简介改写成中文。\n\n要求：\n1. 完全按中文母语者阅读习惯改写，不要日语句式\n2. 使用AV常用的中文词汇，保持色情张力\n3. 不要直译，要有画面感和冲击力\n4. 只返回翻译结果\n\n原文：\n{}",
+        overview
+    );
+    let cn = if !deepseek_key.is_empty() {
+        translate_via_deepseek(&prompt, &deepseek_key)
+    } else {
+        None
+    }.or_else(|| translate_via_google(overview));
+
+    if let Some(cn) = cn {
+        let cn = cn.trim().to_string();
+        if !cn.is_empty() && cn.len() > 10 {
+            let _ = db::with_db(|conn| {
+                conn.execute("UPDATE movies SET chinese_overview=?1 WHERE file_id=?2",
+                    rusqlite::params![cn, file_id])?;
+                Ok(())
+            });
+            log::info!("简介翻译完成: {}... -> {}...", &overview[..overview.len().min(30)], &cn[..cn.len().min(30)]);
         }
     }
 }

@@ -12,6 +12,7 @@ export interface MovieItem {
   title: string;
   original_title?: string | null;
   chinese_name?: string | null;
+  chinese_overview?: string | null;
   year: number | null;
   poster_local: string | null;
   rating: number | null;
