@@ -14,8 +14,10 @@
           <el-tag v-if="movie.runtime">{{ movie.runtime }} 分钟</el-tag>
           <el-tag v-for="g in movie.genre" :key="g" type="info">{{ g }}</el-tag>
         </div>
-        <p class="overview" v-if="movie.chinese_overview">{{ movie.chinese_overview }}</p>
-        <p class="overview original" v-else-if="movie.overview">{{ movie.overview }}</p>
+        <div v-if="movie.chinese_overview || movie.overview" class="overview-section">
+          <p class="overview" v-if="movie.chinese_overview">{{ movie.chinese_overview }}</p>
+          <p class="overview original" v-if="movie.overview">{{ movie.overview }}</p>
+        </div>
         <div class="detail-meta">
           <p v-if="movie.actors?.length"><strong>演员：</strong></p>
           <div v-if="movie.actors?.length" class="actor-list">
@@ -133,7 +135,8 @@ onMounted(async () => {
 .info-col h1 { font-size: 24px; margin-bottom: 8px; }
 .original-title { color: #888; margin-bottom: 12px; }
 .meta-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
-.overview { color: #bbb; line-height: 1.6; margin-bottom: 16px; }
+.overview { color: #bbb; line-height: 1.6; margin-bottom: 8px; }
+.overview.original { color: #777; font-size: 13px; margin-bottom: 16px; }
 .detail-meta p { margin: 6px 0; color: #999; }
 .actor-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
 .actor-chip { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 10px; background: #1a1a2e; border-radius: 20px; font-size: 13px; }
