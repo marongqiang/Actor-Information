@@ -966,91 +966,57 @@ fn scrape_fc2ppvdb(query: &str) -> Result<ScrapeResult, CommandError> {
 // ─── FALENO ───
 fn scrape_faleno(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_lowercase().replace(['-', '_', ' '], "");
-    let url = format!("https://faleno.jp/top/?s={}", code);
+    let url = format!("https://faleno.jp/top/works/{}/", code);
     let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    if body.len() < 500 { return Err(CommandError::scrape_failed("FALENO 无结果")); }
     let doc = scraper::Html::parse_document(&body);
-    let sel = scraper::Selector::parse("a[href*='/works/']").unwrap();
-    let mut detail_url = None;
-    for a in doc.select(&sel) {
-        if let Some(href) = a.value().attr("href") {
-            if href.contains("/works/") { detail_url = Some(format!("https://faleno.jp{}", href)); break; }
-        }
-    }
-    let d_url = detail_url.ok_or_else(|| CommandError::scrape_failed("FALENO 无结果"))?;
-    let resp = get_external_client().get(&d_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&body);
-    let title = doc.select(&scraper::Selector::parse("h1, .works-title, .title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
-    let poster = doc.select(&scraper::Selector::parse("img[src*='works']").unwrap()).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
-    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a[href*='/actress/']").unwrap()).filter_map(|e| { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let title = doc.select(&scraper::Selector::parse("h1, .works-title, .p-work__title, title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&scraper::Selector::parse("img").unwrap()).filter_map(|e| e.attr("src")).find(|s| s.contains("works") || s.contains("package")).map(|s| s.to_string());
+    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a").unwrap()).filter_map(|e| { let h = e.value().attr("href").unwrap_or(""); if h.contains("/actress/") { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } } else { None } }).collect();
     Ok(ScrapeResult { source: "faleno".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 55 })
 }
 
 // ─── DUGA ───
 fn scrape_duga(query: &str) -> Result<ScrapeResult, CommandError> {
-    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
-    let url = format!("https://duga.jp/search/=/q={}/", code);
+    let code = query.trim().to_lowercase().replace(['-', '_', ' '], "");
+    let url = format!("https://duga.jp/ppv/{}/", code);
     let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    if body.len() < 500 || body.contains("403") { return Err(CommandError::scrape_failed("DUGA 不可用")); }
+    if body.len() < 500 { return Err(CommandError::scrape_failed("DUGA 无结果")); }
     let doc = scraper::Html::parse_document(&body);
-    let sel = scraper::Selector::parse("a[href*='/ppv/']").unwrap();
-    let mut detail_url = None;
-    for a in doc.select(&sel) {
-        if let Some(href) = a.value().attr("href") {
-            if href.contains("/ppv/") { detail_url = Some(format!("https://duga.jp{}", href)); break; }
-        }
-    }
-    let d_url = detail_url.ok_or_else(|| CommandError::scrape_failed("DUGA 无结果"))?;
-    let resp = get_external_client().get(&d_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&body);
-    let title = doc.select(&scraper::Selector::parse("h1, .item-title, .title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
-    let poster = doc.select(&scraper::Selector::parse("img[src*='jacket']").unwrap()).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
-    let overview = doc.select(&scraper::Selector::parse(".item-description, .description").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string());
-    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a[href*='/actress/']").unwrap()).filter_map(|e| { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let title = doc.select(&scraper::Selector::parse("h1, .item-title, .p-work__title, title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&scraper::Selector::parse("img").unwrap()).filter_map(|e| e.attr("src")).find(|s| s.contains("jacket") || s.contains("package")).map(|s| s.to_string());
+    let overview = doc.select(&scraper::Selector::parse("p, .description, .summary").unwrap()).filter_map(|e| { let t = e.text().collect::<String>().trim().to_string(); if t.len() > 50 { Some(t) } else { None } }).next();
+    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a").unwrap()).filter_map(|e| { let h = e.value().attr("href").unwrap_or(""); if h.contains("/actress/") { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } } else { None } }).collect();
     Ok(ScrapeResult { source: "duga".into(), title, year: None, poster_url: poster, backdrop_url: None, overview, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 45 })
 }
 
 // ─── SOD ───
 fn scrape_sod(query: &str) -> Result<ScrapeResult, CommandError> {
-    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
-    let url = format!("https://ec.sod.co.jp/prime/videos/genre/?search_type=1&sodsearch={}", code);
+    let code = query.trim().to_lowercase().replace(['-', '_', ' '], "");
+    let url = format!("https://ec.sod.co.jp/prime/videos/?id={}", code);
     let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    if body.len() < 500 { return Err(CommandError::scrape_failed("SOD 无结果")); }
     let doc = scraper::Html::parse_document(&body);
-    let sel = scraper::Selector::parse("a[href*='/prime/videos/?id=']").unwrap();
-    let mut detail_url = None;
-    for a in doc.select(&sel) { if let Some(href) = a.value().attr("href") { if href.contains("id=") { detail_url = Some(format!("https://ec.sod.co.jp{}", href)); break; } } }
-    let d_url = detail_url.ok_or_else(|| CommandError::scrape_failed("SOD 无结果"))?;
-    let resp = get_external_client().get(&d_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&body);
-    let title = doc.select(&scraper::Selector::parse("h1, .item-title, .title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
-    let poster = doc.select(&scraper::Selector::parse("img[src*='jacket']").unwrap()).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
-    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a[href*='actress']").unwrap()).filter_map(|e| { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
-    let runtime = doc.select(&scraper::Selector::parse("td:contains('収録時間'), .runtime").unwrap()).next().and_then(|e| e.text().collect::<String>().chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().ok());
-    Ok(ScrapeResult { source: "sod".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
+    let title = doc.select(&scraper::Selector::parse("h1, .item-title, title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&scraper::Selector::parse("img").unwrap()).filter_map(|e| e.attr("src")).find(|s| s.contains("jacket") || s.contains("package")).map(|s| s.to_string());
+    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a").unwrap()).filter_map(|e| { let h = e.value().attr("href").unwrap_or(""); if h.contains("actress") || h.contains("actor") { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } } else { None } }).collect();
+    Ok(ScrapeResult { source: "sod".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
 }
 
 // ─── DAHLIA ───
 fn scrape_dahlia(query: &str) -> Result<ScrapeResult, CommandError> {
-    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
-    let url = format!("https://dahlia-av.jp/?s={}", code);
+    let code = query.trim().to_lowercase().replace(['-', '_', ' '], "");
+    let url = format!("https://dahlia-av.jp/works/{}/", code);
     let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    if body.len() < 500 { return Err(CommandError::scrape_failed("DAHLIA 无结果")); }
     let doc = scraper::Html::parse_document(&body);
-    let sel = scraper::Selector::parse("a[href*='/works/']").unwrap();
-    let mut detail_url = None;
-    for a in doc.select(&sel) { if let Some(href) = a.value().attr("href") { if href.contains("/works/") { detail_url = Some(format!("https://dahlia-av.jp{}", href)); break; } } }
-    let d_url = detail_url.ok_or_else(|| CommandError::scrape_failed("DAHLIA 无结果"))?;
-    let resp = get_external_client().get(&d_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&body);
-    let title = doc.select(&scraper::Selector::parse("h1, .works-title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
-    let poster = doc.select(&scraper::Selector::parse("img[src*='works']").unwrap()).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
-    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a[href*='/actress/']").unwrap()).filter_map(|e| { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let title = doc.select(&scraper::Selector::parse("h1, .works-title, title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&scraper::Selector::parse("img").unwrap()).filter_map(|e| e.attr("src")).find(|s| s.contains("works") || s.contains("package")).map(|s| s.to_string());
+    let actors: Vec<String> = doc.select(&scraper::Selector::parse("a").unwrap()).filter_map(|e| { let h = e.value().attr("href").unwrap_or(""); if h.contains("/actress/") { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } } else { None } }).collect();
     Ok(ScrapeResult { source: "dahlia".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
 }
 

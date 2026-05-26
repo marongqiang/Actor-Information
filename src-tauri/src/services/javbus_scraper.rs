@@ -58,47 +58,73 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     // Step 2: Parse detail page
     let doc = Html::parse_document(&body);
 
-    // Title + Cover
-    let sel_big_img = Selector::parse("a.bigImage img").unwrap();
+    // Title + Cover — try multiple selectors
     let mut title = query.to_string();
     let mut cover_url = None;
-    if let Some(img) = doc.select(&sel_big_img).next() {
-        title = img.value().attr("title").unwrap_or(&title).to_string();
-        cover_url = img.value().attr("src").map(|s| {
-            if s.starts_with("http") { s.to_string() }
-            else { format!("https://www.javbus.com{}", s) }
-        });
+    let title_selectors = ["a.bigImage img", ".bigImage img", "img.bigImage", "h3", "title"];
+    for sel_str in &title_selectors {
+        if let Ok(sel) = Selector::parse(sel_str) {
+            if let Some(el) = doc.select(&sel).next() {
+                let mut t = el.value().attr("title").unwrap_or("").to_string();
+                if t.is_empty() { t = el.text().collect::<String>().trim().to_string(); }
+                if !t.is_empty() && t.len() > 2 { title = t; break; }
+            }
+        }
+    }
+    // Cover
+    let cover_selectors = ["a.bigImage img", ".bigImage img"];
+    for sel_str in &cover_selectors {
+        if let Ok(sel) = Selector::parse(sel_str) {
+            if let Some(img) = doc.select(&sel).next() {
+                cover_url = img.value().attr("src").map(|s| {
+                    if s.starts_with("http") { s.to_string() } else { format!("https://www.javbus.com{}", s) }
+                });
+                if cover_url.is_some() { break; }
+            }
+        }
     }
 
-    // Info fields
-    let sel_info = Selector::parse("div.col-md-3.info p").unwrap();
+    // Info fields — try multiple selectors
     let mut runtime = None;
     let mut year = None;
-    for p in doc.select(&sel_info) {
-        let text = p.text().collect::<String>().trim().to_string();
-        if text.contains("収録時間") || text.contains("时长") {
-            runtime = text.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().ok();
-        }
-        if text.contains("発売日") && year.is_none() {
-            let nums: String = text.chars().filter(|c| c.is_ascii_digit() || *c == '-').collect();
-            if nums.len() >= 4 { year = nums[..4].parse().ok(); }
+    let info_selectors = ["div.col-md-3.info p", ".info p", ".col-md-3 p", "p", ".header p"];
+    for sel_str in &info_selectors {
+        if let Ok(sel) = Selector::parse(sel_str) {
+            for p in doc.select(&sel) {
+                let text = p.text().collect::<String>().trim().to_string();
+                if text.contains("収録時間") || text.contains("时长") || text.contains("時間") {
+                    runtime = runtime.or_else(|| text.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().ok());
+                }
+                if text.contains("発売日") || text.contains("日期") {
+                    let nums: String = text.chars().filter(|c| c.is_ascii_digit() || *c == '-').collect();
+                    if nums.len() >= 4 { year = nums[..4].parse().ok(); }
+                }
+            }
         }
     }
 
-    // Genres
-    let sel_genre = Selector::parse("span.genre label a, span.genre a").unwrap();
+    // Genres — try multiple selectors
     let mut genres = Vec::new();
-    for g in doc.select(&sel_genre) {
-        let t = g.text().collect::<String>().trim().to_string();
-        if !t.is_empty() { genres.push(t); }
+    let genre_selectors = ["span.genre label a", "span.genre a", ".genre a", "a[href*='genre']"];
+    for sel_str in &genre_selectors {
+        if let Ok(sel) = Selector::parse(sel_str) {
+            for g in doc.select(&sel) {
+                let t = g.text().collect::<String>().trim().to_string();
+                if !t.is_empty() { genres.push(t); }
+            }
+        }
     }
 
-    // Actors
-    let sel_actor = Selector::parse("#star-div a, .star-div a").unwrap();
+    // Actors — try multiple selectors
     let mut actors = Vec::new();
-    for a in doc.select(&sel_actor) {
-        let t = a.text().collect::<String>().trim().to_string();
-        if !t.is_empty() { actors.push(t); }
+    let actor_selectors = ["#star-div a", ".star-div a", "a[href*='star']", "a[href*='actress']"];
+    for sel_str in &actor_selectors {
+        if let Ok(sel) = Selector::parse(sel_str) {
+            for a in doc.select(&sel) {
+                let t = a.text().collect::<String>().trim().to_string();
+                if !t.is_empty() { actors.push(t); }
+            }
+        }
     }
 
     // Poster: convert thumb to full cover
