@@ -160,14 +160,22 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             Ok(res) => {
                 // Check if it's actually a 404/error page
                 let is_bogus = res.title.contains("見つかりません") || res.title.contains("Service Unavailable")
-                    || res.title.contains("Not Found") || res.title.contains("404");
+                    || res.title.contains("Not Found") || res.title.contains("404")
+                    || res.title.contains("Search Results") || res.title.contains("エラー")
+                    || res.title.contains("全動画") || res.title.contains("JAVten")
+                    || res.title.contains("セレブ") || res.title.contains("AVエンターテインメント")
+                    || res.title.len() < 4;
                 if is_bogus {
                     log::warn!("刮削 {}: 返回错误页面, 忽略", source);
                     continue;
                 }
                 log::info!("刮削 {}: 成功, title={}", source, res.title);
-                // If individual scraper returned good data (actors+genres), skip MetaTube
-                if source.as_str() != "metatube" && res.actors.is_some() && !res.actors.as_ref().map_or(true, |a| a.is_empty()) {
+                // Only skip MetaTube if scraper returned genuinely good data
+                let has_good_data = source.as_str() != "metatube"
+                    && res.poster_url.is_some()
+                    && res.actors.as_ref().map_or(0, |a| a.len()) >= 2
+                    && res.genre.as_ref().map_or(false, |g| !g.is_empty());
+                if has_good_data {
                     got_good_data = true;
                     log::info!("独立刮削器 {} 返回完整数据, 跳过MetaTube", source);
                 }
@@ -1056,7 +1064,7 @@ macro_rules! simple_scraper {
             let url = format!($url_template, code);
             let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
             let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-            if body.len() < 500 { return Err(CommandError::scrape_failed(concat!($source, " 无结果"))); }
+            if body.len() < 500 || body.contains("404") || body.contains("Not Found") { return Err(CommandError::scrape_failed(concat!($source, " 无结果"))); }
             let doc = scraper::Html::parse_document(&body);
             let title = doc.select(&scraper::Selector::parse("h1, h2, h3, .title, .item-title, title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
             let poster = doc.select(&scraper::Selector::parse("img").unwrap()).filter_map(|e| e.attr("src")).find(|s| s.contains("jacket")||s.contains("package")||s.contains("thumb")||s.contains("cover")).map(|s| s.to_string());
