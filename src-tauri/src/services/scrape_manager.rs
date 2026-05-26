@@ -671,37 +671,43 @@ fn scrape_javlib(query: &str) -> Result<ScrapeResult, CommandError> {
 // ─── Fanza/DMM (blocking HTML parse) ───
 
 fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
-    let code = query.to_uppercase().replace(['-', '_', ' '], "");
-    let url = format!("https://www.dmm.co.jp/mono/dvd/-/search/=/searchstr={}", encode(&code));
-    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let code_lower = query.trim().to_lowercase().replace(['-', '_', ' '], "");
+    let code_upper = query.trim().to_uppercase().replace(['-', '_', ' '], "");
+
+    // Use DMM Mono DVD detail page (bypass age check with cookie)
+    let url = format!("https://www.dmm.co.jp/mono/dvd/-/detail/=/cid={}/", code_lower);
+    log::info!("Fanza: {}", url);
+    let resp = get_external_client().get(&url)
+        .header("Cookie", "age_check_done=1")
+        .send()
+        .map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("Fanza不可用")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
-    let s_item = scraper::Selector::parse(".tmb a").unwrap();
-    let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
-    if detail_url.is_none() {
-        log::warn!("Fanza 选择器.tmb a未匹配, 页面{}字节, 前200字: {}", html.len(), &html[..html.len().min(200)]);
-        return Err(CommandError::scrape_failed("Fanza无结果"));
-    }
-    let detail_url = detail_url.unwrap().to_string();
-    let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&html);
-    let s_title = scraper::Selector::parse("h1#title").unwrap();
-    let s_cover = scraper::Selector::parse("#sample-image1 img").unwrap();
-    let s_actor = scraper::Selector::parse("#performer a").unwrap();
-    let s_genre = scraper::Selector::parse(".genreTag a").unwrap();
-    let s_info = scraper::Selector::parse("table.mg-b20 tr").unwrap();
-    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
-    let poster = doc.select(&s_cover).next().and_then(|e| e.value().attr("src").map(|s| s.to_string()));
+
+    // Check for age verification page
+    if html.contains("年齢認証") { return Err(CommandError::scrape_failed("Fanza 年龄认证失败")); }
+
+    let title = doc.select(&scraper::Selector::parse("h1#title").unwrap()).next()
+        .map(|e| e.text().collect::<String>().trim().to_string())
+        .unwrap_or_else(|| query.to_string());
+    let poster = doc.select(&scraper::Selector::parse("#sample-image1 img").unwrap()).next()
+        .and_then(|e| e.value().attr("src").map(|s| s.to_string()));
     let mut year = None; let mut runtime = None;
-    for tr in doc.select(&s_info) {
-        let t = tr.text().collect::<String>();
-        if t.contains("発売日") || t.contains("配信開始日") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
-        if t.contains("収録時間") { runtime = t.split_whitespace().last().and_then(|s| s.trim().replace("min", "").parse().ok()); }
+    if let Ok(sel) = scraper::Selector::parse("table.mg-b20 tr") {
+        for tr in doc.select(&sel) {
+            let t = tr.text().collect::<String>();
+            if t.contains("発売日") || t.contains("配信開始日") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
+            if t.contains("収録時間") { runtime = t.split_whitespace().last().and_then(|s| s.trim().replace("min", "").parse().ok()); }
+        }
     }
-    let actors: Vec<String> = doc.select(&s_actor).filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
-    let genres: Vec<String> = doc.select(&s_genre).filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let actors: Vec<String> = doc.select(&scraper::Selector::parse("#performer a").unwrap())
+        .filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    let genres: Vec<String> = doc.select(&scraper::Selector::parse(".genreTag a").unwrap())
+        .filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+
+    if title == query.to_string() && actors.is_empty() { return Err(CommandError::scrape_failed("Fanza无结果")); }
+
     Ok(ScrapeResult { source: "fanza".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 65 })
 }
 
