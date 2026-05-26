@@ -679,7 +679,10 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     let doc = scraper::Html::parse_document(&html);
     let s_item = scraper::Selector::parse(".tmb a").unwrap();
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
-    if detail_url.is_none() { return Err(CommandError::scrape_failed("Fanza无结果")); }
+    if detail_url.is_none() {
+        log::warn!("Fanza 选择器.tmb a未匹配, 页面{}字节, 前200字: {}", html.len(), &html[..html.len().min(200)]);
+        return Err(CommandError::scrape_failed("Fanza无结果"));
+    }
     let detail_url = detail_url.unwrap().to_string();
     let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
