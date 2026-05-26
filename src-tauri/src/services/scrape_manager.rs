@@ -706,6 +706,7 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     let genres: Vec<String> = doc.select(&scraper::Selector::parse(".genreTag a").unwrap())
         .filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
 
+    log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} poster={}", title, actors.len(), genres.len(), runtime, year, poster.is_some());
     if title == query.to_string() && actors.is_empty() { return Err(CommandError::scrape_failed("Fanza无结果")); }
 
     Ok(ScrapeResult { source: "fanza".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 65 })
