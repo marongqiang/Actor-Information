@@ -59,9 +59,7 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     if body.len() < 500 || body.contains("Cloudflare") || body.contains("404") {
         return Err(CommandError::scrape_failed("JavBus 无结果"));
     }
-    if body.contains("Age Verification") {
-        return Err(CommandError::scrape_failed("JavBus 年龄验证失败"));
-    }
+    // Note: "Age Verification" text may appear as an overlay — movie data is still in the page
 
     let doc = Html::parse_document(&body);
 
