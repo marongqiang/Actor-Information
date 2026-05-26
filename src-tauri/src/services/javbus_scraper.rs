@@ -40,27 +40,13 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     let client = build_client();
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
 
-    // Step 0: First visit homepage to set cookies
-    let _ = client.get("https://www.javbus.com/").send();
-    // Use search page (less likely to trigger age verification)
-    let search_url = format!("https://www.javbus.com/ja/search/{}", &code);
-    log::info!("JavBus 搜索: {}", search_url);
-    let resp = client.get(&search_url)
-        .header("Referer", "https://www.javbus.com/")
-        .header("Cookie", "existmag=all; age=verified")
-        .send()
-        .map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = Html::parse_document(&body);
-    // Find first movie link
-    let sel_box = Selector::parse("a.movie-box").unwrap();
-    let detail_url = doc.select(&sel_box).next()
-        .and_then(|a| a.value().attr("href"))
-        .map(|h| if h.starts_with("http") { h.to_string() } else { format!("https://www.javbus.com{}", h) });
-    let detail_url = match detail_url {
-        Some(u) => u,
-        None => return Err(CommandError::scrape_failed("JavBus 无结果")),
-    };
+    // Warm up cookies + age verification
+    let _ = client.get("https://www.javbus.com/")
+        .header("Cookie", "existmag=all; over18=18")
+        .send();
+
+    // Direct detail URL
+    let detail_url = format!("https://www.javbus.com/ja/{}", &code);
     log::info!("JavBus 详情: {}", detail_url);
     let resp = client.get(&detail_url)
         .header("Referer", "https://www.javbus.com/")
@@ -68,22 +54,15 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    log::info!("JavBus 响应: {} bytes, Cloudflare={}", body.len(), body.contains("Cloudflare"));
-
-    // Step 2: Fetch detail page
-    let resp = client.get(&detail_url)
-        .header("Referer", "https://www.javbus.com/")
-        .header("Cookie", "existmag=all; age=verified")
-        .send()
-        .map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    log::info!("JavBus 响应: {} bytes, Cloudflare={}", body.len(), body.contains("Cloudflare"));
+    log::info!("JavBus 响应: {} bytes, Cloudflare={} AgeVerify={}", body.len(), body.contains("Cloudflare"), body.contains("Age Verification"));
 
     if body.len() < 500 || body.contains("Cloudflare") || body.contains("404") {
         return Err(CommandError::scrape_failed("JavBus 无结果"));
     }
+    if body.contains("Age Verification") {
+        return Err(CommandError::scrape_failed("JavBus 年龄验证失败"));
+    }
 
-    // Step 3: Parse detail page
     let doc = Html::parse_document(&body);
 
     // Title + Cover — try multiple selectors
@@ -112,7 +91,7 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
         }
     }
 
-    // Info fields — try multiple selectors
+    // Info fields
     let mut runtime = None;
     let mut year = None;
     let info_selectors = ["div.col-md-3.info p", ".info p", ".col-md-3 p", "p", ".header p"];
@@ -131,7 +110,7 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
         }
     }
 
-    // Genres — try multiple selectors
+    // Genres
     let mut genres = Vec::new();
     let genre_selectors = ["span.genre label a", "span.genre a", ".genre a", "a[href*='genre']"];
     for sel_str in &genre_selectors {
@@ -143,7 +122,7 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
         }
     }
 
-    // Actors — try multiple selectors
+    // Actors
     let mut actors = Vec::new();
     let actor_selectors = ["#star-div a", ".star-div a", "a[href*='star']", "a[href*='actress']"];
     for sel_str in &actor_selectors {
