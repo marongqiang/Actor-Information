@@ -688,10 +688,6 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     // Check for age verification page
     if html.contains("年齢認証") { return Err(CommandError::scrape_failed("Fanza 年龄认证失败")); }
 
-    // Debug: dump full HTML for CSS analysis (one time)
-    for (i, chunk) in html.as_bytes().chunks(4000).enumerate() {
-        log::info!("Fanza HTML[{}]: {}", i, String::from_utf8_lossy(chunk));
-    }
 
     let title = doc.select(&scraper::Selector::parse("h1#title").unwrap()).next()
         .map(|e| e.text().collect::<String>().trim().to_string())
@@ -726,7 +722,7 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     if let Ok(sel) = scraper::Selector::parse("tr") {
         for tr in doc.select(&sel) {
             let t = tr.text().collect::<String>().trim().to_string();
-            if t.starts_with("ジャンル") || t.contains("ジャンル：") {
+            if (t.starts_with("ジャンル") || t.contains("ジャンル：")) && !t.contains("人気") {
                 // Extract text after the label, split by whitespace
                 let after = t.split('：').nth(1).unwrap_or(&t).replace('\u{A0}', " ");
                 for part in after.split_whitespace() {
