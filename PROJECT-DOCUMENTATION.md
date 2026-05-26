@@ -1,824 +1,211 @@
+# 智能网盘影视库 (Smart Media Vault) 技术文档
 
-# 智能网盘影视库 (smart-media-vault) 完整规格说明书
-
-**版本**：1.2.4  
-**最后更新**：2026-05-15  
-**维护者**：开发团队
+**版本**：1.2.4
+**最后更新**：2026-05-26
 
 ---
 
-## 目录
+## 1. 软件概述
 
-1. [项目概述](#1-项目概述)
-2. [技术栈](#2-技术栈)
-3. [项目目录结构](#3-项目目录结构)
-4. [数据库设计](#4-数据库设计)
-5. [TypeScript 接口定义](#5-typescript-接口定义)
-6. [Tauri 命令接口](#6-tauri-命令接口)
-7. [前端路由](#7-前端路由)
-8. [侧边栏导航结构](#8-侧边栏导航结构)
-9. [设置页 Tab 结构](#9-设置页-tab-结构)
-10. [扫描工作流](#10-扫描工作流)
-11. [刮削源配置](#11-刮削源配置)
-12. [错误码定义](#12-错误码定义)
-13. [应用数据存储路径](#13-应用数据存储路径)
-14. [构建与打包](#14-构建与打包)
-15. [版本记录](#15-版本记录)
+- 软件名称：智能网盘影视库
+- 一句话介绍：115网盘影视文件管理桌面应用，支持元数据刮削、海报墙浏览和演员管理。
+- 解决什么问题：解决115网盘中大量影视文件缺乏结构化元数据、难以按演员/类型/评分等维度浏览和检索的问题，提供一站式影视库管理体验。
 
 ---
 
-## 1. 项目概述
+## 2. 完整功能列表
 
-**项目名称**：智能网盘影视库 (smart-media-vault)  
-**版本**：1.2.4  
-**类型**：Windows x64 桌面应用程序  
-**核心功能**：管理 115 网盘中的影视文件，自动刮削元数据（海报、演员、简介等），提供海报墙浏览、演员库管理、播放进度追踪、分组管理等。
+- 模块一：网盘扫描
+  - 功能1：通过115网盘API获取目录树结构，支持面包屑导航
+  - 功能2：支持扫码登录和Cookie登录两种认证方式
+  - 功能3：增量扫描仅收集新增或变更的文件，全量扫描清空数据库后重新入库
+  - 功能4：支持自定义视频扩展名列表和子目录深度
+  - 功能5：扫描结果弹窗实时显示已发现的视频文件数量
 
-**关键设计目标**：
-- 通过 Cookie 登录 115 网盘，浏览并扫描网盘目录中的视频文件
-- 视频文件入库后在海报墙展示，支持分组管理和收藏
-- 演员库支持本地文件夹扫描、别名管理、合并去重
-- 登录状态和扫描设置持久化，重启自动恢复
-- 扫描请求自动限流（每秒1次+批次冷却），防止被封 IP
+- 模块二：元数据刮削
+  - 功能6：内置MetaTube SDK（Go语言编译的服务端进程），覆盖约30个AV信息提供器
+  - 功能7：额外内置20个独立HTML刮削器，包括TMDB、IMDb、豆瓣、JavBus、JavDB、JavLibrary、Fanza、Arzon、MGStage、FC2、JpHoo、Airav、Jav321、XCITY、Prestige、Avsox、Njav、GetAV、WhosTV、FC2PPVDB
+  - 功能8：刮削时从多个数据源合并元数据，每个字段（标题、演员、类型、封面、简介、时长）取最优值
+  - 功能9：自动下载海报封面到本地，按番号分文件夹存储
+  - 功能10：刮削进度实时显示在当前处理文件名、成功/失败计数和百分比
+  - 功能11：支持单文件刮削、批量刮削、右键菜单单独刮削
+  - 功能12：刮削开始时间和结束时间逐条记录到影片表
+  - 功能13：失败原因单独记录到数据库，可在影片表中查看
 
----
+- 模块三：影片翻译
+  - 功能14：刮削后自动调用翻译API将日文片名翻译为中文片名，使用AV专用翻译提示词
+  - 功能15：刮削后自动将日文类型标签翻译为中文，支持批量编号翻译确保格式准确
+  - 功能16：刮削后自动将日文剧情简介翻译为中文简介，保持色情张力和画面感
+  - 功能17：翻译优先使用DeepSeek API，失败后降级到Google翻译
+  - 功能18：标签翻译库机制，已翻译的标签存入本地数据库，下次直接复用避免重复API调用
+  - 功能19：标签翻译库支持用户手动编辑、删除、添加，以及黑名单标记
+  - 功能20：黑名单标签在影片表中自动隐藏不显示
 
-## 2. 技术栈
+- 模块四：海报墙
+  - 功能21：网格布局展示影片海报，支持按关键词、类型、年份、分组筛选
+  - 功能22：有中文名优先显示中文名，否则显示原始文件名
+  - 功能23：右键菜单支持添加到收藏分组和海报墙分组
+  - 功能24：分页浏览，支持每页10至300条可配置
+  - 功能25：切换页面后刮削进度浮窗状态保持不丢失
 
-| 类别 | 技术选型 | 版本/说明 |
-|------|----------|------------|
-| 核心框架 | Tauri | 2.0 |
-| 前端框架 | Vue 3 | 3.4，Composition API |
-| 状态管理 | Pinia | 2.1 |
-| 路由 | Vue Router | 4.3，createWebHistory |
-| UI 库 | Element Plus | 2.5，中文 locale，暗色主题 |
-| 构建工具 | Vite | 5.4 |
-| 语言 | TypeScript (前端) + Rust (后端) | TS 5.4，Rust 2021 |
-| 数据库 | rusqlite (bundled SQLite) | 0.31，WAL 模式 |
-| HTTP 客户端 | reqwest (Rust) | 0.12，异步 |
-| HTML 解析 | scraper (Rust) | 0.19 |
-| 日志 | log + fern (Rust) | 轮转输出到文件 |
-| 图片处理 | image (Rust) | 0.25，转 WebP |
-| 加密 | aes-gcm + rand | 本地加密存储 |
-| 测试 | vitest + @vue/test-utils / cargo test | - |
+- 模块五：影片表格
+  - 功能26：表格形式展示所有影片的片名、原名、中文名、年份、评分、时长、类型、刮削状态、刮削时间、失败原因等字段
+  - 功能27：支持多列排序，点击任意列表头可切换升序降序
+  - 功能28：支持批量选中后隐藏或取消隐藏
+  - 功能29：翻译按钮可手动触发影片中文名翻译
+  - 功能30：已隐藏列支持一键开关（文件名、大小、文件ID等次要列默认隐藏）
 
----
+- 模块六：影片详情
+  - 功能31：详情页展示海报大图、中文片名（优先）或原片名、类型标签、简介（翻译版本优先，同时显示原文）、演员列表（带头像）
+  - 功能32：演员头像从本地演员库加载，显示为圆形头像卡片，可点击跳转到演员详情
 
-## 3. 项目目录结构
+- 模块七：演员管理
+  - 功能33：演员库按首字母分组展示，支持按首字母导航和搜索
+  - 功能34：演员表格支持分页、排序、搜索、内联编辑
+  - 功能35：演员详情展示头像、基本信息（三围、身高、出生日期）、作品列表和照片集
+  - 功能36：支持合并重复演员记录、演员文件夹扫描、头像刷新、文件夹重命名等操作
 
-```
-smart-media-vault/
-├── src-tauri/                     # Tauri 后端 (Rust)
-│   ├── src/
-│   │   ├── main.rs                # 入口
-│   │   ├── lib.rs                 # 插件注册、命令注册、启动恢复
-│   │   ├── commands/              # Tauri 命令处理器
-│   │   │   ├── mod.rs
-│   │   │   ├── auth.rs            # 登录/登出/验证
-│   │   │   ├── fs.rs              # 115文件浏览/扫描/播放链接
-│   │   │   ├── scrape.rs          # 刮削任务管理
-│   │   │   ├── library.rs         # 影片库 CRUD
-│   │   │   ├── player.rs          # 播放进度
-│   │   │   ├── config.rs          # 配置读写
-│   │   │   ├── task.rs            # 任务管理
-│   │   │   ├── groups.rs          # 影片分组 + 演员分组
-│   │   │   └── actress_merge.rs   # 演员库操作
-│   │   ├── services/              # 业务服务
-│   │   │   ├── mod.rs
-│   │   │   ├── pan115.rs          # 115 API 客户端 (category/files)
-│   │   │   ├── scanner.rs         # 网盘扫描（递归+限流+去重）
-│   │   │   ├── scrape_manager.rs  # 刮削调度
-│   │   │   ├── actress_sync.rs    # 演员数据同步
-│   │   │   ├── actress_folder_manager.rs  # 演员文件夹管理
-│   │   │   ├── image_cache.rs     # 图片下载缓存
-│   │   │   ├── task_manager.rs    # 任务持久化
-│   │   │   ├── playback_refresher.rs  # 播放链接续期
-│   │   │   └── secure_config.rs   # 加密配置存储
-│   │   ├── db/
-│   │   │   ├── mod.rs             # 连接初始化、迁移、种子数据
-│   │   │   ├── queries.rs         # 预编译 SQL
-│   │   │   └── migrations/
-│   │   │       ├── v1.sql         # 初始 schema（11张表）
-│   │   │       ├── v2.sql         # tasks + actress_aliases
-│   │   │       ├── v3.sql         # av_actors 新增字段
-│   │   │       └── v4.sql         # created_at 列 + 刮削源扩展
-│   │   └── utils/
-│   │       ├── mod.rs
-│   │       ├── error.rs           # 统一错误类型
-│   │       ├── filename_parser.rs # 文件名解析
-│   │       ├── logger.rs          # 日志初始化（exe目录/logs/）
-│   │       └── crypto.rs          # AES-256-GCM 加解密
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
-│   ├── build.rs
-│   └── icons/
-├── src/                           # 前端 Vue 3 + TS
-│   ├── main.ts
-│   ├── App.vue                    # 主布局 + 自定义侧边栏导航 + 右键菜单
-│   ├── router/index.ts            # 路由表（9条路由）
-│   ├── stores/
-│   │   ├── library.ts             # 影片库状态
-│   │   ├── actress.ts             # 演员库状态
-│   │   ├── scan.ts                # 扫描状态
-│   │   └── task.ts                # 任务状态
-│   ├── views/
-│   │   ├── PosterWall.vue         # 海报墙（网格 + 右键二级菜单）
-│   │   ├── Detail.vue             # 影片详情（演员名可点击跳转）
-│   │   ├── Player.vue             # 在线播放器
-│   │   ├── Favorites.vue          # 收藏影片
-│   │   ├── Actress.vue            # 演员库（圆头像 + 右键菜单）
-│   │   ├── ActressDetail.vue      # 演员详情（信息/别名/关联影片）
-│   │   ├── ActressTable.vue       # 演员表格（可编辑/排序/勾选）
-│   │   ├── Scan.vue               # 扫描管理（三步流程）
-│   │   └── Settings.vue           # 设置（5个Tab）
-│   ├── types/index.ts             # 全局 TS 接口
-│   ├── composables/
-│   │   └── usePlayerRefresh.ts    # 播放链接续期
-│   └── vite-env.d.ts
-├── index.html
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-├── tsconfig.node.json
-├── README.md
-├── PROJECT-DOCUMENTATION.md
-└── .gitignore
-```
+- 模块八：刮削日志（已计划，暂未实现前端页面）
+  - 功能37：后端已支持刮削日志表（scrape_log），记录每个文件的刮削状态、开始时间、结束时间和错误信息
+
+- 模块九：播放器
+  - 功能38：通过115网盘API获取视频直链，支持在线播放
+  - 功能39：记录播放进度，下次进入续播；支持标记已看完和未看完
+  - 功能40：支持调用外部播放器（如PotPlayer）播放
+
+- 模块十：分组管理
+  - 功能41：支持创建收藏分组和海报墙分组，两组互相隔离
+  - 功能42：侧边栏显示分组列表，点击可筛选对应分组的影片
+  - 功能43：支持分组的重命名、删除、排序
+
+- 模块十一：设置
+  - 功能44：刮削源管理表格，支持启用或禁用每个刮削源，支持全选和取消全选
+  - 功能45：TMDB API Key加密存储和读取
+  - 功能46：JpHoo刮削源的三项认证参数配置（secret、refreshtoken、guestid）
+  - 功能47：DeepSeek API Key配置（用于翻译功能）
+  - 功能48：网络代理配置（地址、端口、开关），自动传递给MetaTube服务端
+  - 功能49：界面主题、海报尺寸、字体大小、窗口标题等外观设置
+  - 功能50：正经模式开关，开启后将所有海报替换为指定图片
+  - 功能51：115网盘登录管理（扫码或Cookie）
+  - 功能52：演员文件夹路径配置、自动创建演员、待审核开关等演员管理设置
+  - 功能53：刮削引擎一键更新按钮（自动执行git pull和go build）
+  - 功能54：开发者工具按钮，方便调试前端问题
+
+- 模块十二：数据管理
+  - 功能55：导出影片列表为JSON文件
+  - 功能56：清理所有分组数据
+  - 功能57：视频扩展名在扫描管理中作为标签形式管理（新增、删除、自动保存）
 
 ---
 
-## 4. 数据库设计
+## 3. 实现方法说明
 
-数据库文件：`<exe目录>/../data/vault.db`（首次启动自动创建）  
-启动 PRAGMA：
-```sql
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-PRAGMA cache_size = -20000;
-PRAGMA foreign_keys = ON;
-```
+- 整体技术方案：
+  - 用什么编程语言：前端使用TypeScript和Vue 3框架，后端使用Rust语言，辅助刮削引擎使用Go语言（MetaTube SDK编译的独立服务端进程）
+  - 用什么框架或主要库：前端基于Vue 3 Composition API和Element Plus UI组件库，状态管理使用Pinia，路由使用Vue Router。后端基于Tauri 2.0框架构建桌面应用壳，数据库使用SQLite（通过rusqlite库操作，启用WAL模式），HTTP客户端使用reqwest库，HTML解析使用scraper库。翻译功能调用DeepSeek API和Google Translate API。配置文件中的敏感信息（如API Key）使用AES-256-GCM加密存储
+  - 程序的大致结构：分为四个层次。界面层包含约15个Vue单文件组件，负责海报墙、影片表格、演员库、详情页、设置页、扫描页、播放器等所有用户可见的界面。命令层是约10个Rust模块，通过Tauri的invoke_handler机制注册了约80个命令函数，作为前端和后端的桥梁。服务层是约8个Rust模块，实现核心业务逻辑，包括刮削管理器、元数据翻译器、115网盘API客户端、文件扫描器、演员数据同步器、MetaTube服务端生命周期管理器。数据层是SQLite数据库，通过约10个SQL迁移脚本管理表结构（当前版本有v1到v10共10个迁移），约20个查询函数封装所有数据操作
 
-迁移版本通过 `schema_version` 表管理，当前最新为 v4。
+- 各功能模块的实现思路：
+  - 网盘扫描：基于115网盘的category/files API端点，使用异步递归函数逐层遍历目录树。为防止触发API限流（每秒1次），实现了令牌桶限流器，每10次请求后额外冷却3秒。增量模式下检查file_id是否已存在于movies表中；全量模式先执行DELETE FROM movies清空全部记录（级联删除播放进度和演员关联），再重新入库。文件扩展名过滤通过从配置表读取用户自定义的扩展名列表实现
+  - 元数据刮削：核心是scrape_file函数，接受file_id和启用的源列表作为参数。首先从文件名中提取番号（通过文件名解析器分离出品方代码、编号等关键信息），然后按优先级遍历所有启用的刮削源。MetaTube源具有最高优先级，因为它内部覆盖了约30个提供器。MetaTube成功且数据足够完整时（演员、类型、封面、时长至少有3项），直接跳过其余约19个独立的HTML刮削源以节省时间。MetaTube内部通过对每个搜索结果独立调用info API获取完整详情，然后按字段取最优值（标题取最长、演员取并集、封面优先取大图、评分取最高、时长取最长且做秒到分钟的归一化）。海报下载使用独立的HTTP客户端（带代理），下载时添加Referer头以绕过JavBus等网站的防盗链，下载后校验文件头（JPEG、PNG、WEBP、GIF魔数）以确认是真实图片而非反爬HTML页面
+  - 影片翻译：刮削完成后自动触发auto_translate_movie函数，依次翻译片名、简介和类型标签。翻译前检查DeepSeek API Key是否存在，存在则优先使用DeepSeek（AI翻译质量更高），失败则降级到Google Translate免费接口。类型标签翻译使用编号格式提示词（如"1.标签A\n2.标签B"），要求API按编号返回对应翻译，避免解析混乱。翻译完成后自动将日文到中文的映射存入genre_translations表，形成标签翻译库。后续刮削先查库，已有翻译直接复用
+  - 海报墙：使用CSS Grid响应式布局，每张卡片包含海报图片和影片信息。海报图片通过read_image_base64命令将本地文件转换为Base64 Data URL显示（因为Tauri的convertFileSrc无法访问外部文件路径）。中文名优先显示逻辑通过模板中的chinese_name或title字段实现。分页和筛选通过Pinia store的setFilters方法传递参数给get_movies命令
+  - 刮削进度：前端通过Fire-and-Forget模式发起批量刮削（不等待返回），同时启动一个每秒轮询的定时器调用get_batch_progress命令获取本次勾选文件的完成情况。轮询更新刮削状态列、进度百分比和浮动进度条。全部完成后10秒自动隐藏浮动进度条。进度状态存储在window全局对象上，切换页面不丢失
+  - 电影表格排序：前端通过el-table的sort-change事件触发，将列名和方向拼成字符串（如updated_at_descending）发送到后端。后端通过rsplit_once函数分割排序参数，与白名单列表比对防止SQL注入，然后动态拼入ORDER BY子句
+  - 演员管理：演员头像通过read_image_base64预加载为Base64显示。演员数据支持从影片刮削结果中自动创建（在apply_scrape_result中检查actors列表，INSERT OR IGNORE到av_actors表）
+  - 设置存储：普通配置通过set_config和get_config命令存入config表的value列（明文）。敏感配置（如TMDB API Key、DeepSeek API Key）通过set_secure_config和get_secure_config命令存入config表的encrypted_value列（AES-256-GCM加密）。用户自定义的刮削源备注通过JSON序列化存入config表
+  - 正经模式：通过useImageUrl组合式函数，在加载任何图片前检查sfw_mode配置。若开启，所有图片路径替换为预定义的占位图片路径。切换开关时清空图片缓存并触发sfw-changed自定义事件强制重新加载
 
-### 4.1 核心表
-
-#### `movies` — 影片主表
-```sql
-CREATE TABLE movies (
-    file_id                     TEXT PRIMARY KEY,      -- 115文件ID (fid)
-    title                       TEXT NOT NULL,         -- 主标题
-    original_title              TEXT,                  -- 原片名
-    year                        INTEGER,               -- 年份
-    poster_url                  TEXT,                  -- 原始海报URL
-    poster_local                TEXT,                  -- 本地缓存路径
-    backdrop_url                TEXT,                  -- 背景图URL
-    overview                    TEXT,                  -- 简介
-    rating                      REAL,                  -- 评分0-10
-    runtime                     INTEGER,               -- 分钟
-    director                    TEXT,                  -- 导演
-    genre                       TEXT,                  -- JSON数组字符串
-    file_name                   TEXT NOT NULL,         -- 原始文件名
-    file_size                   INTEGER,               -- 字节
-    created_at                  INTEGER NOT NULL,      -- 入库时间戳
-    updated_at                  INTEGER NOT NULL,      -- 更新时间戳
-    is_hidden                   INTEGER NOT NULL DEFAULT 0,
-    last_play_url               TEXT,                  -- 播放链接缓存
-    last_play_url_expire        INTEGER                -- 链接过期时间戳
-);
-CREATE INDEX idx_movies_year ON movies(year);
-CREATE INDEX idx_movies_title ON movies(title);
-CREATE INDEX idx_movies_updated ON movies(updated_at);
-```
-
-#### `actors` — 基础演员表
-```sql
-CREATE TABLE actors (
-    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name                        TEXT UNIQUE NOT NULL
-);
-```
-
-#### `movie_actors` — 影片-演员关联
-```sql
-CREATE TABLE movie_actors (
-    movie_id                    TEXT NOT NULL,
-    actor_id                    INTEGER NOT NULL,
-    PRIMARY KEY (movie_id, actor_id),
-    FOREIGN KEY (movie_id) REFERENCES movies(file_id) ON DELETE CASCADE,
-    FOREIGN KEY (actor_id) REFERENCES actors(id) ON DELETE CASCADE
-);
-```
-
-#### `play_progress` — 播放进度
-```sql
-CREATE TABLE play_progress (
-    file_id                     TEXT PRIMARY KEY,
-    progress                    INTEGER NOT NULL DEFAULT 0,
-    duration                    INTEGER NOT NULL DEFAULT 0,
-    is_finished                 INTEGER NOT NULL DEFAULT 0,
-    updated_at                  INTEGER NOT NULL,
-    FOREIGN KEY (file_id) REFERENCES movies(file_id) ON DELETE CASCADE
-);
-```
-
-#### `groups` — 影片分组
-```sql
-CREATE TABLE groups (
-    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name                        TEXT NOT NULL,
-    type                        TEXT NOT NULL DEFAULT 'manual',
-                                -- 'manual'=海报墙分组, 'favorite'=收藏分组, 'genre', 'collection'
-    sort_order                  INTEGER NOT NULL DEFAULT 0,
-    created_at                  INTEGER NOT NULL
-);
-CREATE INDEX idx_groups_sort ON groups(sort_order);
-```
-
-#### `movie_groups` — 影片-分组关联
-```sql
-CREATE TABLE movie_groups (
-    group_id                    INTEGER NOT NULL,
-    movie_id                    TEXT NOT NULL,
-    added_at                    INTEGER NOT NULL,
-    PRIMARY KEY (group_id, movie_id),
-    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
-    FOREIGN KEY (movie_id) REFERENCES movies(file_id) ON DELETE CASCADE
-);
-```
-
-#### `av_actors` — 演员库（含本地文件夹信息）
-```sql
-CREATE TABLE av_actors (
-    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name                        TEXT NOT NULL,
-    avatar_url                  TEXT,
-    avatar_local                TEXT,
-    debut_year                  INTEGER,
-    height                      INTEGER,
-    birthdate                   TEXT,
-    blood_type                  TEXT,
-    bust                        INTEGER,
-    waist                       INTEGER,
-    hip                         INTEGER,
-    cup                         TEXT,
-    letter                      CHAR(1),               -- 拼音首字母
-    local_folder_name           TEXT,                  -- 本地文件夹完整路径
-    is_pending                  INTEGER NOT NULL DEFAULT 0, -- 0=已确认 1=待审核
-    source                      TEXT,                  -- 'local_folder'|'scrape'|'manual'
-    created_at                  INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX idx_av_actors_name ON av_actors(name);
-CREATE INDEX idx_av_actors_letter ON av_actors(letter);
-```
-
-#### `actress_groups` — 演员分组
-```sql
-CREATE TABLE actress_groups (
-    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-    name                        TEXT NOT NULL,
-    sort_order                  INTEGER NOT NULL DEFAULT 0
-);
-```
-
-#### `actress_group_members` — 演员-分组关联
-```sql
-CREATE TABLE actress_group_members (
-    group_id                    INTEGER NOT NULL,
-    actress_id                  INTEGER NOT NULL,
-    added_at                    INTEGER NOT NULL,
-    PRIMARY KEY (group_id, actress_id),
-    FOREIGN KEY (group_id) REFERENCES actress_groups(id) ON DELETE CASCADE,
-    FOREIGN KEY (actress_id) REFERENCES av_actors(id) ON DELETE CASCADE
-);
-```
-
-#### `actress_aliases` — 演员别名
-```sql
-CREATE TABLE actress_aliases (
-    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-    actress_id                  INTEGER NOT NULL,
-    alias_name                  TEXT NOT NULL UNIQUE,
-    FOREIGN KEY (actress_id) REFERENCES av_actors(id) ON DELETE CASCADE
-);
-CREATE INDEX idx_aliases_actress_id ON actress_aliases(actress_id);
-CREATE INDEX idx_aliases_name ON actress_aliases(alias_name);
-```
-
-#### `config` — 配置表（支持加密）
-```sql
-CREATE TABLE config (
-    key                         TEXT PRIMARY KEY,
-    value                       TEXT,                  -- 明文
-    encrypted_value             BLOB,                  -- AES加密值
-    use_system_credential       INTEGER NOT NULL DEFAULT 0,
-    updated_at                  INTEGER NOT NULL
-);
-```
-
-#### `scrape_cache` — 刮削缓存
-```sql
-CREATE TABLE scrape_cache (
-    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
-    query_key                   TEXT NOT NULL,
-    source                      TEXT NOT NULL,
-    result_json                 TEXT NOT NULL,
-    expires_at                  INTEGER NOT NULL,
-    UNIQUE(query_key, source)
-);
-CREATE INDEX idx_cache_expires ON scrape_cache(expires_at);
-```
-
-#### `tasks` — 长任务持久化
-```sql
-CREATE TABLE tasks (
-    id                          TEXT PRIMARY KEY,
-    type                        TEXT NOT NULL,         -- 'scan'|'scrape'
-    target_ids                  TEXT NOT NULL,
-    status                      TEXT NOT NULL,
-    progress                    INTEGER NOT NULL DEFAULT 0,
-    result                      TEXT,
-    created_at                  INTEGER NOT NULL,
-    updated_at                  INTEGER NOT NULL,
-    error                       TEXT,
-    checkpoint                  TEXT
-);
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_type ON tasks(type);
-```
-
-#### `meta` — 扩展元数据
-```sql
-CREATE TABLE meta (
-    key                         TEXT PRIMARY KEY,
-    value                       TEXT NOT NULL,
-    updated_at                  INTEGER NOT NULL
-);
-```
-
-### 4.2 默认配置
-
-```sql
-INSERT OR IGNORE INTO config (key, value) VALUES
-('db_version', '4'),
-('scan_depth', '5'),
-('theme', 'dark'),
-('poster_size', 'medium'),
-('font_size', '14'),
-('privacy_title', '智能网盘影视库'),
-('external_player', ''),
-('scrape_sources', '["tmdb","imdb","douban","javbus","javdb","fanza","airav","xcity","mgstage","fc2","jav321","javlibrary","arzon"]'),
-('video_extensions', '["mp4","mkv","avi","mov","rmvb","flv","wmv","ts","iso","m2ts"]'),
-('playback_refresh_interval', '240'),
-('auto_start', 'false'),
-('local_actor_base_dir', 'D:\\Media Library\\Actor Information\\picture'),
-('auto_create_actors_from_scrape', '1'),
-('actor_pending_review', '1'),
-('allow_app_rename_actor_folders', '0'),
-('actor_merge_auto_merge_folders', '1'),
-('actor_merge_file_naming_pattern', '{name}_{index}{ext}'),
-('actor_merge_dry_run', '1');
-```
+- 关键逻辑说明：
+  - 程序入口：前端入口是main.ts（Vue应用初始化），后端入口是lib.rs（Tauri Builder启动，注册命令和插件，执行数据库迁移，启动MetaTube服务端）
+  - 数据流转：用户在前端页面操作（如点击刮削按钮），前端通过invoke函数调用Rust命令，命令函数从数据库读取配置和数据，调用服务层函数执行业务逻辑，将结果返回前端展示。刮削流程中，前端发送file_ids列表，后端spawn_blocking在独立线程中逐文件执行刮削，完成后通过AppHandle发送事件到前端更新进度
+  - 多线程处理：批量刮削在tokio::task::spawn_blocking中运行，确保不阻塞Tauri主线程。文件间有100毫秒的间隔避免网盘API限流。MetaTube服务端作为独立进程运行，通过HTTP与主程序通信。数据库操作通过Mutex保护单个SQLite连接实现线程安全
+  - 错误处理：Rust层通过CommandError枚举统一处理数据库错误、网络错误、文件错误等。前端通过try-catch捕获invoke调用的错误并显示ElMessage提示。数据库迁移失败会触发panic并记录到日志，但重复列名错误已被特殊处理（忽略并继续）。刮削失败时将错误信息写入scrape_error列和日志
 
 ---
 
-## 5. TypeScript 接口定义
+## 4. 数据/文件处理逻辑
 
-```typescript
-// 文件项（来自115列表）
-interface FileItem {
-  cid: string;          // 目录ID
-  name: string;         // 文件名
-  is_dir: boolean;      // 是否目录
-  size: number;         // 字节
-  update_time: number;  // 修改时间戳
-  file_id?: string;     // 文件ID（仅文件有）
-}
+- 涉及哪些数据或文件类型：SQLite数据库文件（vault.db），JSON配置文件（scrape_sources、video_extensions等序列化为JSON存入config表），图片文件（JPG、PNG、WEBP、GIF格式的海报封面），Go编译的二进制文件（metatube-server.exe），日志文件（app.log和metatube.log），HTML页面（刮削器解析的网页内容）
+- 数据是如何读取、存储和删除的：数据库通过全局Mutex保护的单一SQLite连接读写，WAL模式确保读写并发安全。全量扫描时执行DELETE FROM movies清空影片表（级联删除play_progress和movie_actors）。海报文件在apply_scrape_result中下载并写入data/images/posters目录。翻译库删除通过DELETE FROM genre_translations按ja_name精确匹配执行。海报文件在全量扫描时通过remove_dir_all整个删除posters目录
+- 是否有临时文件生成：无专门的临时文件机制。MetaTube的Go服务端使用内存数据库（SQLite in-memory），不产生文件。海报下载直接写入最终目标路径
+- 是否涉及网络请求：涉及大量网络请求。115网盘API（proapi.115.com和webapi.115.com）用于登录、获取目录、获取播放链接。TMDB API（api.themoviedb.org）用于通用电影刮削。JavBus、JavDB、Fanza等约20个AV信息网站用于HTML刮削。DeepSeek API（api.deepseek.com）和Google Translate API（translate.googleapis.com）用于翻译。MetaTube服务端（localhost:9588）用于内部API调用。海报图片从各刮削源网站的CDN下载。所有外部请求通过代理配置（若启用）路由，本地请求直连
 
-// 影片项（海报墙用）
-interface MovieItem {
-  file_id: string;
-  title: string;
-  year: number | null;
-  poster_local: string | null;
-  rating: number | null;
-  genre: string[];
-  is_hidden: boolean;
-  progress?: number;
-  duration?: number;
-}
+- 数据库模型与表关系：
+  - movies表：核心影片表，存储file_id（主键，115网盘文件ID）、title（原始文件名去扩展名）、original_title（刮削到的原名）、chinese_name（翻译后的中文名）、chinese_overview（翻译后的中文简介）、year、poster_url、poster_local（本地海报路径）、overview（原文简介）、rating、runtime、genre（JSON数组格式存储的多值类型标签）、file_name（完整文件名含扩展名）、file_size、is_hidden（隐藏标记）、scrape_status（刮削状态：0未刮削1刮削中2成功3失败）、scrape_started_at、scrape_finished_at、scrape_error、last_play_url、last_play_url_expire、created_at、updated_at
+  - actors表：演员基础表，存储id、name（唯一索引），通过movie_actors关联表与movies形成多对多关系（一个影片有多个演员，一个演员参演多个影片）
+  - play_progress表：播放进度表，以file_id为主键与movies一对一关联，存储progress（当前秒数）、duration（总秒数）、is_finished标记
+  - av_actors表：AV演员扩展信息表，存储name、avatar_local（本地头像路径）、debut_year、height、bust、waist、hip、cup、letter（首字母，用于字母索引分组）、local_folder_name（演员本地文件夹路径）、is_pending（待审核标记）、source（数据来源）
+  - actress_aliases表：演员别名表，actress_id关联av_actors，alias_name存储别名，用于搜索时匹配
+  - actress_groups和actress_group_members表：演员分组及其成员关系，结构与影片分组类似但独立
+  - groups表：分组表，存储name、type（manual为海报墙分组，favorite为收藏分组）、sort_order。通过movie_groups关联表与movies形成多对多关系
+  - config表：键值配置表，key为主键，value存储明文配置值，encrypted_value存储AES-256-GCM加密后的敏感配置（如API Key），use_system_credential标记，updated_at记录更新时间
+  - scrape_cache表：刮削缓存表，以query_key和source为联合唯一键，result_json存储刮削结果的JSON序列化数据，expires_at控制过期时间
+  - genre_translations表：标签翻译库表，ja_name为主键存储日文标签，cn_name存储对应的中文翻译，blacklisted标记是否为黑名单标签（黑名单标签在影片展示时过滤），updated_at记录更新时间
+  - schema_version表：数据库迁移版本记录表，version为主键，applied_at记录迁移执行时间，用于确保每个迁移脚本仅执行一次
 
-// 影片详情
-interface MovieDetail extends MovieItem {
-  original_title: string | null;
-  backdrop_local: string | null;
-  overview: string | null;
-  runtime: number | null;
-  director: string | null;
-  actors: string[];
-  file_name: string;
-  file_size: number;
-  created_at: number;
-  updated_at: number;
-  groups: GroupItem[];
-}
-
-// 影片分组
-interface GroupItem {
-  id: number;
-  name: string;
-  type: 'manual' | 'favorite' | 'genre' | 'collection';
-  sort_order: number;
-  movie_count?: number;
-}
-
-// 演员项
-interface ActressItem {
-  id: number;
-  name: string;
-  avatar_local: string | null;
-  debut_year: number | null;
-  height: number | null;
-  bust: number | null;
-  waist: number | null;
-  hip: number | null;
-  cup: string | null;
-  letter: string;
-  movie_count?: number;
-  local_folder_name?: string | null;
-  is_pending: boolean;
-  source?: string | null;       // 'local_folder' | 'scrape' | 'manual'
-  _aliases?: string[];          // 运行时注入
-}
-
-// 演员分组
-interface ActressGroupItem {
-  id: number;
-  name: string;
-  sort_order: number;
-  member_count?: number;
-}
-
-// 筛选参数
-interface FilterParams {
-  keyword?: string;
-  year?: number;
-  genre?: string;
-  group_id?: number;
-  is_hidden?: boolean;
-  is_finished?: boolean;
-}
-
-// 任务
-interface Task {
-  id: string;
-  type: 'scan' | 'scrape';
-  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed';
-  progress: number;
-  result?: any;
-  error?: string;
-  created_at: number;
-  updated_at: number;
-}
-
-// 刮削结果
-interface ScrapeResult {
-  source: string;
-  title: string;
-  year?: number;
-  poster_url?: string;
-  backdrop_url?: string;
-  overview?: string;
-  rating?: number;
-  runtime?: number;
-  director?: string;
-  genre?: string[];
-  actors?: string[];
-  score: number;
-}
-
-// 合并选项
-interface MergeOptions {
-  mergeFolders: boolean;
-  conflictPolicy?: 'rename' | 'skip' | 'overwrite';
-  dryRun?: boolean;
-}
-
-// 合并结果
-interface MergeResult {
-  success: boolean;
-  movedFiles: string[];
-  conflicts: string[];
-  renamedFiles?: Array<{ from: string; to: string }>;
-  error?: string;
-}
-
-// 重复演员对
-interface DuplicatePair {
-  id1: number;
-  id2: number;
-  similarity: number;
-}
-```
+- 数据库并发控制：
+  - 当前实现使用单一SQLite连接，通过标准库的std::sync::Mutex进行全局互斥保护。所有数据库读写操作（包括批量刮削中的apply_scrape_result写入、前端轮询的get_batch_progress读取、海报墙的get_movies查询）都通过同一个Mutex串行化执行
+  - SQLite连接启用了WAL（Write-Ahead Logging）模式，允许多个读操作与一个写操作并发执行，但由于应用程序只使用单一连接，实际上无法利用WAL的并发读优势——所有操作在Mutex层面已经串行
+  - 当前未配置SQLite的busy_timeout参数，依赖Mutex来避免忙等待。在高并发场景下（如前端正以1.5秒间隔轮询刮削进度，同时刮削线程在频繁写入更新scrape_status），锁竞争可能导致UI响应延迟
+  - 潜在优化方向：可考虑使用连接池方案（如r2d2-sqlite），允许多个读连接共享WAL模式的并发读能力，仅对写操作进行串行化；或为长时间运行的读取操作（如导出列表）和快速写入操作使用不同的连接，减少相互阻塞
 
 ---
 
-## 6. Tauri 命令接口
+## 5. 用户操作流程
 
-所有命令通过 `@tauri-apps/api/core` 的 `invoke` 调用，返回 `Result<T, CommandError>`。
+**完整任务流程：从零开始到浏览影视库**
 
-### 6.1 认证 (auth)
-
-```
-login_qrcode()             → { qrcode_url: string, uid: string }
-login_status(uid)          → { status: 'waiting'|'scanned'|'authorized'|'expired', cookie?: string }
-login_cookie(cookie)       → void   (存储扫码获得的cookie)
-login_cookie_direct(cookie)→ void   (验证并存储手动输入的cookie)
-logout()                   → void
-check_token()              → bool
-```
-
-Cookie 登录后自动加密存储到 config 表，下次启动自动恢复。
-
-### 6.2 文件系统与扫描 (fs)
-
-```
-list_root()                → { cid: string, name: string }[]
-get_files(cid, page, pageSize) → { files: FileItem[], total: number }
-scan_directory(cid, depth, mode) → { total, new, updated, deleted }
-get_play_url(fileId)       → { url: string, expire_at: number }
-refresh_play_url(fileId)   → { url: string, expire_at: number }
-export_list()              → string  (导出路径)
-```
-
-- `mode`: `'incremental'` | `'full'`
-- `depth`: 1-10，子目录递归深度
-- 扫描使用 `category/files` 端点，自动限流（1次/秒 + 每10次冷却3秒）
-- 已扫描目录去重（HashSet），不会重复请求
-
-### 6.3 刮削 (scrape)
-
-```
-start_scrape(fileIds)       → taskId
-pause_scrape(taskId)        → void
-resume_scrape(taskId)       → void
-manual_scrape(fileId, keyword) → ScrapeResult[]
-select_scrape_result(fileId, resultIdx) → void
-test_source(url)            → { status, time_ms }
-```
-
-### 6.4 任务管理 (task)
-
-```
-get_pending_tasks()         → Task[]
-resume_task(taskId)         → void
-cancel_task(taskId)         → void
-```
-
-### 6.5 影视库 (library)
-
-```
-get_movies(filters, sort, page)  → { movies: MovieItem[], total: number }
-get_movie_detail(fileId)         → MovieDetail | null
-batch_action(fileIds, action)    → void  ('mark_watched'|'mark_unwatched'|'rescrape')
-hide_movies(fileIds)             → void
-unhide_movies(fileIds)           → void
-```
-
-### 6.6 影片分组 (groups)
-
-```
-get_groups(category?)       → GroupItem[]  (category: 'manual'|'favorite'|'all')
-create_group(name, groupType?) → GroupItem
-rename_group(groupId, newName)  → void
-delete_group(groupId)           → void
-reorder_groups(orderedIds)      → void
-add_movies_to_group(groupId, fileIds) → void
-remove_movie_from_group(groupId, fileId) → void
-```
-
-- 重名检查按 `(name, type)` 范围
-- `type`: `'manual'`=海报墙分组, `'favorite'`=收藏分组
-
-### 6.7 演员库 (actress)
-
-```
-sync_actress_data()                     → void  (从本地文件夹+影片演员表同步)
-get_actresses_by_letter()               → { letter, actresses[] }[]
-get_actresses_paginated(page, pageSize, search?, sortField?, sortOrder?, includePending?, groupId?)
-    → { list: ActressItem[], total: number }
-find_actress(name)                      → ActressItem | null
-update_actress(id, data)                → void  (支持 is_pending/name/debut_year/height/bust/waist/hip/cup/source)
-delete_actresses(ids)                   → number  (删除数量)
-delete_all_actresses()                  → number  (调试用，清空全部)
-get_actress_aliases(actressId)          → string[]
-add_actress_alias(actressId, alias)     → void
-
-// 演员文件夹相关
-scan_local_actress_folder(folderPath?)  → { added, total }
-refresh_actress_avatar(actressId)       → void
-confirm_actor(actorId, accepted)        → void  (待审核→确认/拒绝)
-update_actor_local_folder(actorId, folderPath?) → void
-rename_actor_and_folder(actorId, newName, renameFolder) → { success, error? }
-merge_actresses(sourceId, targetId, options) → MergeResult
-detect_duplicate_actresses(threshold?)  → DuplicatePair[]
-get_actress_local_folder(actressId)     → string | null
-sync_actress_with_local_folder(actressId) → void
-```
-
-- 排序字段：name, debut_year, height, bust, waist, hip, cup, movie_count, id, is_pending, source, letter
-- `includePending`: `undefined`=全部, `true`=仅待审核, `false`=仅已确认
-- 本地文件夹扫描时 `is_pending` 默认 0（已确认）
-
-### 6.8 演员分组 (actress groups)
-
-```
-get_actress_groups()                → ActressGroupItem[]
-create_actress_group(name)          → ActressGroupItem
-rename_actress_group(groupId, newName) → void
-delete_actress_group(groupId)       → void
-add_actresses_to_group(groupId, actressIds) → void
-remove_actress_from_group(groupId, actressId) → void
-```
-
-### 6.9 播放进度 (player)
-
-```
-get_progress(fileId)                → { progress, duration, is_finished }
-save_progress(fileId, progress, duration) → void
-end_playback(fileId)                → void
-```
-
-### 6.10 配置 (config)
-
-```
-get_config(key)                     → string | null
-set_config(key, value)              → void
-get_all_config()                    → Record<string, string>
-set_secure_config(key, value)       → void  (AES-256-GCM加密存储)
-get_secure_config(key)              → string | null
-clear_secure_config(key)            → void
-```
+1. 用户双击启动软件，应用自动初始化日志系统、数据库迁移和MetaTube刮削引擎
+2. 用户进入设置页的常规标签，使用扫码或Cookie方式登录115网盘
+3. 用户进入设置页的网络代理标签，填写代理地址和端口（如127.0.0.1:7897），开启代理开关并保存
+4. 用户进入设置页的刮削源标签，勾选需要使用的刮削源（建议勾选MetaTube），根据需要填写TMDB API Key、JpHoo认证参数和DeepSeek API Key，点击保存
+5. 用户进入扫描管理页面，在面包屑导航中选择目标网盘目录，设置扫描模式和子目录深度
+6. 用户点击开始扫描，软件弹出扫描进度窗口，实时显示已发现的视频文件数量
+7. 扫描完成后用户进入影片表格页面，勾选需要刮削的影片，点击刮削按钮
+8. 软件右上角显示刮削进度浮窗（当前文件数/总数、成功数、失败数），不阻止用户进行其他操作
+9. 刮削完成后用户进入海报墙页面，可以看到影片海报、中文片名和评分
+10. 用户点击任意海报进入影片详情页，查看完整演员列表（带头像）、类型标签和中文简介
+11. 用户在影片表格中点击翻译按钮可手动翻译片名；刮削时已自动翻译的片名和简介无需手动处理
+12. 用户进入设置页的标签库标签，可查看和管理日文标签到中文标签的翻译映射，标记不需要的标签为黑名单
+13. 用户点击影片的海报进入播放页面，软件从115网盘获取播放直链开始播放，记录播放进度
+14. 用户在演员表格中查看和管理所有演员信息，可手动合并重复演员、扫描本地演员文件夹更新头像
+15. 用户关闭应用窗口退出程序，MetaTube服务端进程随主程序一起终止
 
 ---
 
-## 7. 前端路由
+## 6. 潜在问题 / 需要特别注意的地方
 
-| 路径 | 名称 | 组件 | 说明 |
-|------|------|------|------|
-| `/` | home | PosterWall.vue | 海报墙，支持分组筛选(`?group_id=N`) |
-| `/detail/:fileId` | detail | Detail.vue | 影片详情，演员名可点击跳转 |
-| `/player/:fileId` | player | Player.vue | 在线播放（5秒自动保存进度） |
-| `/favorites` | favorites | Favorites.vue | 收藏影片，支持分组筛选 |
-| `/actress` | actress | Actress.vue | 演员库（圆头像网格），头像可点击跳详情 |
-| `/actress/:id` | actress-detail | ActressDetail.vue | 演员详情（信息/别名/关联影片） |
-| `/actress-table` | actress-table | ActressTable.vue | 演员表格（可编辑/排序/勾选/分组筛选） |
-| `/scan` | scan | Scan.vue | 扫描管理（三步流程：浏览→设置→执行） |
-| `/settings` | settings | Settings.vue | 设置（5个Tab页签） |
-
-路由守卫：不强制登录，115 相关 API 调用时提示未登录。
+- 性能瓶颈：MetaTube全源搜索需要约12秒（所有提供器并行搜索，最慢的AVE提供器需约11秒），这是整个刮削流程中最耗时的步骤。批量刮削时，补全尝试（对FANZA、JAV321、MGS的额外info API调用）即使数据已完整也会发送，可优化为仅在数据不完整时触发。海报墙加载大量Base64图片时可能导致内存占用较高（每张图约200KB-2MB的Base64编码）。翻译API调用（DeepSeek）可能存在速率限制，大量标签翻译时较慢。数据库锁竞争见第4节数据库并发控制部分——单连接Mutex在高并发读写场景下可能成为瓶颈
+- 安全风险：代理配置中的地址和端口未做输入校验。115网盘的Cookie存储在SQLite数据库中（明文存储），若数据库文件泄露可能导致网盘账号被盗用。用户自定义的刮削源备注中没有任何XSS防护，但当前仅用于内部显示，风险较低？前端invoke调用未做权限校验，所有命令对所有前端页面开放
+- 兼容性问题：仅支持Windows平台（使用了Windows特定的CREATE_NO_WINDOW标志和dirs库的Windows路径）。MetaTube服务端编译需要Go 1.25+环境，编译产物约67MB。前端依赖Tauri 2.0的WebView2运行时（Windows 10+自带）
+- 边界情况未处理：文件夹为空时扫描结果返回0个文件，界面显示"目录为空"提示。数据库迁移中遇到重复列名错误时忽略并继续，但如果碰到其他SQL错误（如磁盘满）会触发panic。海报URL无效或返回非图片内容时，校验文件头魔数后丢弃，不会产生损坏的文件。MetaTube服务端启动失败时仅打印警告日志，不阻止主程序启动。全量扫描时若海报文件夹正在被其他程序占用，remove_dir_all操作可能失败（当前无错误处理）
+- 资源泄漏风险：MetaTube服务端进程在stop_server函数中通过kill和wait终止，但如果主程序崩溃退出，子进程可能成为孤儿进程继续占用端口。数据库连接通过全局Mutex管理，若发生死锁（目前未观察到）可能导致整个应用卡死。HTTP客户端使用OnceLock全局单例，无法在运行时更换配置（如切换代理后需重启应用）
+- 数据库锁竞争：批量刮削场景中，刮削线程频繁写入scrape_status和更新时间戳，同时前端以1.5秒间隔轮询get_batch_progress读取同一批file_id的状态。由于所有操作共享单一的Mutex<Connection>，写入密集期间轮询读取可能被阻塞，导致UI进度更新出现卡顿感。缓解方案包括：为轮询读取设置独立的只读连接、或配置SQLite的busy_timeout参数让读操作等待而非被Mutex阻塞
+- Docker或虚拟环境：当前无Docker支持，所有依赖直接安装在宿主机
 
 ---
 
-## 8. 侧边栏导航结构
+## 7. 待完善功能
 
-```
-智能网盘影视库
-├── 🖼 海报墙 ▸               ← 点击展开/折叠，右键 → 新增分组
-│   ├── 分组1 (12)           ← 右键 → 重命名/删除
-│   └── 分组2 (5)
-├── ⭐ 收藏影片 ▸             ← 同上
-│   └── 收藏分组1 (3)
-├── 👤 演员库 ▸               ← 同上
-│   └── 演员分组1 (8)
-├── 📋 演员表格               ← 独立一级入口
-├── 📁 扫描管理
-└── ⚙ 设置
-```
-
-- 分组按类型隔离：海报墙(type=manual)、收藏(type=favorite)、演员(actress_groups表)
-- 允许跨类型同名分组
-- 所有入口点击即可导航+折叠切换
+- 刮削日志独立页面：后端已实现scrape_log表和查询命令，但前端尚未创建独立的刮削日志页面，当前仅在影片表格中显示刮削状态列
+- 演员从123av.org自动获取：曾尝试用Python Scrapling库绕过Cloudflare保护，但因Turnstile验证和过多Python依赖未能成功，后续可改用其他方案
+- 影片详情页的演员头像当前从本地演员库加载，若演员尚未录入库中则不显示头像，后续可增加在线头像获取
+- MetaTube服务端日志当前已重定向到文件，但健康检查和自动重启机制未实现，后续可增加进程守护
+- 播放链接过期后（1小时）需用户重新进入播放页刷新，可增加自动续期或播放时实时获取
+- 海报图片当前大多为缩略图（约4KB-170KB），虽然已优先使用大图链接但部分源只提供小图，可增加对预览图集的下载支持
+- 扫描功能目前仅支持115网盘，可扩展支持百度网盘、阿里云盘等其他云存储
+- 刮削结果中存在多个版本的同一影片（如DVD版和蓝光版），当前未做去重处理
+- 元数据精确匹配度评分系统未实现，当前无法判断刮削结果的准确度
+- 刮削源健康检查未实现，无法自动检测哪些源已失效
 
 ---
 
-## 9. 设置页 Tab 结构
+## 8. 问题/不确定点
 
-| Tab | 内容 |
-|-----|------|
-| **刮削源** | 13个刮削源复选框(tmdb/imdb/douban/javbus/javdb/fanza/airav/xcity/mgstage/fc2/jav321/javlibrary/arzon)、视频扩展名(逗号分隔)、TMDB API Key |
-| **网络代理** | 代理开关/类型/地址/端口 |
-| **缓存** | 图片缓存大小、数据管理（导出/清缓存）、日志路径 |
-| **界面** | 主题(暗色/亮色)、海报尺寸、字体大小、窗口标题、外部播放器路径、播放链接续期间隔、开机自启 |
-| **常规** | 115登录(扫码/Cookie双Tab)、演员文件夹管理(路径/审核/重命名/合并配置) |
-
----
-
-## 10. 扫描工作流
-
-```
-步骤一：浏览网盘目录
-  → 加载根目录(cid=0, category/files)
-  → 点击📁进入子目录（面包屑导航）
-  → 勾选要扫描的目录
-
-步骤二：扫描设置
-  → 已选目录标签展示
-  → 扫描模式（增量/全量）
-  → 子目录深度（1-10）
-
-步骤三：执行扫描
-  → 弹窗显示进度：大号数字"已扫描到影片数量: XXX"
-  → 后端递归遍历 → 限流 → 去重 → 过滤视频扩展名 → 入库
-  → 完成显示新增/更新统计
-  → "关闭"或"去海报墙查看"
-```
-
-扫描完成后自动保存 CID/深度/模式到配置，下次启动恢复。
-
----
-
-## 11. 刮削源配置
-
-当前支持的 13 个刮削源：
-
-| 源 | 类型 | 说明 |
-|----|------|------|
-| tmdb | 通用 | The Movie Database |
-| imdb | 通用 | Internet Movie Database |
-| douban | 通用 | 豆瓣电影 |
-| javbus | JAV | JavBus |
-| javdb | JAV | JavDB |
-| fanza | JAV | Fanza（官方） |
-| airav | JAV | Airav |
-| xcity | JAV | XCITY |
-| mgstage | JAV | MGStage |
-| fc2 | JAV | FC2 |
-| jav321 | JAV | Jav321 |
-| javlibrary | JAV | JavLibrary |
-| arzon | JAV | Arzon |
-
-可在设置页动态增删，也可编辑 `scrape_sources` 配置项。
-
-视频扩展名：默认 `mp4,mkv,avi,mov,rmvb,flv,wmv,ts,iso,m2ts`，不区分大小写，可在设置页修改。
-
----
-
-## 12. 错误码定义
-
-| code | 含义 | 说明 |
-|------|------|------|
-| 1000 | 数据库错误 | 查询失败、迁移错误、约束冲突 |
-| 2000 | 网络错误 | 115 API 请求失败、超时、DNS 错误 |
-| 2100 | 未授权 | 115 Cookie 失效或未登录 |
-| 2200 | 限流 | HTTP 429 响应 |
-| 3000 | 无效输入 | 参数缺失、格式错误、超出范围 |
-| 3100 | 资源未找到 | 文件、演员、分组不存在 |
-| 4000 | 内部错误 | panic 或其他未知错误 |
-| 4100 | 刮削失败 | 所有刮削源均无结果或全部超时 |
-
----
-
-## 13. 应用数据存储路径
-
-| 路径 | 说明 |
-|------|------|
-| `<exe目录>/logs/app.log` | 滚动日志文件 |
-| `<exe目录>/../data/vault.db` | SQLite 数据库（WAL 模式） |
-| `%APPDATA%/smart-media-vault/images/` | 海报/头像缓存（WebP 格式） |
-| `%APPDATA%/smart-media-vault/exports/` | 影片列表导出目录 |
-
-日志级别：生产环境 INFO，开发环境 DEBUG。
-
----
-
-## 14. 构建与打包
-
-### 开发
-
-```bash
-npm install
-npx tauri dev
-```
-
-### 生产构建
-
-```bash
-npx tauri build
-```
-
-产物：
-- 安装包：`src-tauri/target/release/bundle/nsis/智能网盘影视库_1.2.4_x64-setup.exe`
-- 便携版：`smart-media-vault-v1.2.4-portable.zip`
-
----
-
-## 15. 版本记录
-
-| 版本 | 日期 | 内容 |
-|------|------|------|
-| v1.2.4 | 2026-05-15 | 演员详情页+头像/演员名点击跳转；右键菜单统一二级展开；排序字段扩展；Cookie/扫描设置持久化；扫描去重+限流；fid字符串误判目录修复；视频扩展名可配置 |
-| v1.2.3 | 2026-05-15 | 分组类型隔离+右键子项操作；演员表独立入口/可编辑单元格/排序；演员库圆头像+右键分组；扫描三步流程+弹窗进度；115 category/files API集成 |
-| v1.2.2 | 2026-05-15 | 侧边栏重构+收藏入口；演员表列宽/排序/勾选；刮削源扩至13个；设置Tab布局；二维码CSP修复 |
-| v1.2.0 | 2026-05-15 | 演员本地文件夹管理(扫描/合并/重复检测/待审核)；Cookie直接登录 |
-| v1.1.0 | 2026-05-15 | 初始版本：海报墙/详情/播放/演员库/演员表格/扫描/设置；60+命令；115扫码登录；13张核心表 |
-
+- MetaTube的Go服务端使用内存数据库（无--dsn参数），每次重启都会丢失之前刮削的缓存数据，导致同一番号每次刮削都需要重新全源搜索，约浪费12秒。不确定是否需要改为文件数据库以持久化缓存。
+- FANZA提供器的JavaScript解析错误（var `self` does not contain key `__next_f`）是否已修复，取决于MetaTube上游社区是否更新了该提供器的代码。
+- 代理的no_proxy机制在reqwest 0.12中的行为不确定：虽然添加了NoProxy::from_string("localhost,127.0.0.1,::1")，但之前观察到对IP地址可能不生效，最终解决方案是完全移除刮削客户端的代理配置，仅靠MetaTube服务端的环境变量传递代理。
+- autotranslate_genres函数中使用all_genres.contains进行去重判断，但之前存在因首尾空格导致的重复问题。虽然后来改为trim后比较，但不确定是否还有其他Unicode规范化问题（如全角半角、日语汉字与中文汉字的差异）。
+- 全量扫描删除所有影片数据后，之前下载的海报文件保存在data/images/posters目录中不会被删除（虽然代码中有移除逻辑），新旧文件可能混合存在。
+- MetaTube补全尝试中对JAV321的请求有时会超时长达6-8秒，不确定是JAV321网站本身响应慢还是代理节点问题。
