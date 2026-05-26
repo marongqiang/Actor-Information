@@ -40,13 +40,15 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     let client = build_client();
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
 
-    // Visit homepage first to let JavBus set session cookies (age verification, etc.)
-    // Do NOT set explicit Cookie header — let cookie_store handle it automatically
+    // Step 1: Visit homepage with existmag cookie to seed the cookie_store
+    // This is the key cookie MetaTube uses. The response may set additional cookies.
     let _ = client.get("https://www.javbus.com/")
         .header("Referer", "https://www.javbus.com/")
+        .header("Cookie", "existmag=all")
         .send();
 
-    // Direct detail URL — cookie_store automatically sends cookies set by homepage
+    // Step 2: Access detail page — cookie_store now has existmag + any Set-Cookie from step 1
+    // Do NOT set Cookie header here; let cookie_store handle it (like MetaTube's colly)
     let detail_url = format!("https://www.javbus.com/ja/{}", &code);
     log::info!("JavBus 详情: {}", detail_url);
     let resp = client.get(&detail_url)
