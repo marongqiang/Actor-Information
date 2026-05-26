@@ -40,18 +40,18 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     let client = build_client();
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
 
-    // Warm up cookies + age verification
+    // Visit homepage first to let JavBus set session cookies (age verification, etc.)
+    // Do NOT set explicit Cookie header — let cookie_store handle it automatically
     let _ = client.get("https://www.javbus.com/")
-        .header("Cookie", "existmag=all; over18=18")
+        .header("Referer", "https://www.javbus.com/")
         .send();
 
-    // Direct detail URL
+    // Direct detail URL — cookie_store automatically sends cookies set by homepage
     let detail_url = format!("https://www.javbus.com/ja/{}", &code);
     log::info!("JavBus 详情: {}", detail_url);
     let resp = client.get(&detail_url)
         .header("Referer", "https://www.javbus.com/")
         .header("Accept-Language", "ja-JP,ja;q=0.9")
-        .header("Cookie", "existmag=all; over18=18")
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
