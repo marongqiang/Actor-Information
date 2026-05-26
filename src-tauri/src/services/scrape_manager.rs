@@ -759,7 +759,14 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     let mut rating: Option<f64> = None;
     let graphql_url = "https://api.video.dmm.co.jp/graphql";
     let gql_query = r#"query($id:ID!,$isAv:Boolean!){ppvContent(id:$id){duration actresses{id name imageUrl}genres{id name}maker{name}label{name}deliveryStartDate}reviewSummary(contentId:$id){average}}"#;
-    let gql_body = serde_json::json!({"query": gql_query, "variables": {"id": code_lower, "isAv": true}});
+    // Try digital-padded ID: SONE-131 → sone00131 (letters + 5-digit pad)
+    let code_digital = if let Some(pos) = code_lower.find(|c: char| c.is_ascii_digit()) {
+        let prefix = &code_lower[..pos];
+        let num = &code_lower[pos..];
+        format!("{}{:0>5}", prefix, num)
+    } else { code_lower.clone() };
+    log::info!("Fanza GraphQL尝试: mono={} digital={}", code_lower, code_digital);
+    let gql_body = serde_json::json!({"query": gql_query, "variables": {"id": code_digital, "isAv": true}});
     if let Ok(resp) = get_external_client().post(graphql_url)
         .header("Referer", "https://video.dmm.co.jp/")
         .header("Fanza-Device", "BROWSER")
