@@ -17,10 +17,12 @@ pub struct JavBusResult {
 }
 
 fn build_client() -> reqwest::blocking::Client {
+    let ua = format!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{}.0.0.0 Safari/537.36", 120 + rand::random::<u8>() as u16 % 30);
     let mut builder = reqwest::blocking::Client::builder()
         .cookie_store(true)
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0");
+        .user_agent(ua);
 
     if let Ok(Some(enabled)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_enabled")) {
         if enabled == "true" {
