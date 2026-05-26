@@ -134,6 +134,26 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             "duga" => scrape_duga(query),
             "sod" => scrape_sod(query),
             "dahlia" => scrape_dahlia(query),
+            "1pondo" => scrape_1pondo(query),
+            "10musume" => scrape_10musume(query),
+            "caribbeancom" => scrape_caribbeancom(query),
+            "caribbeancompr" => scrape_caribbeancompr(query),
+            "c0930" => scrape_c0930(query),
+            "gcolle" => scrape_gcolle(query),
+            "getchu" => scrape_getchu(query),
+            "h0930" => scrape_h0930(query),
+            "h4610" => scrape_h4610(query),
+            "heydouga" => scrape_heydouga(query),
+            "heyzo" => scrape_heyzo(query),
+            "javfree" => scrape_javfree(query),
+            "kin8" => scrape_kin8(query),
+            "muramura" => scrape_muramura(query),
+            "mywife" => scrape_mywife(query),
+            "pacopacomama" => scrape_pacopacomama(query),
+            "pcolle" => scrape_pcolle(query),
+            "fc2hub" => scrape_fc2hub(query),
+            "tokyohot" => scrape_tokyohot(query),
+            "ave" => scrape_ave(query),
             _ => { log::debug!("刮削源 {} 未实现", source); continue; }
         };
         match &r {
@@ -1026,6 +1046,47 @@ fn scrape_dahlia(query: &str) -> Result<ScrapeResult, CommandError> {
     let actors: Vec<String> = doc.select(&scraper::Selector::parse("a").unwrap()).filter_map(|e| { let h = e.value().attr("href").unwrap_or(""); if h.contains("/actress/") { let n = e.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } } else { None } }).collect();
     Ok(ScrapeResult { source: "dahlia".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
 }
+
+// ─── Remaining MetaTube providers (simple HTML scrapers) ───
+
+macro_rules! simple_scraper {
+    ($name:ident, $source:expr, $site:expr, $url_template:expr) => {
+        fn $name(query: &str) -> Result<ScrapeResult, CommandError> {
+            let code = query.trim().to_lowercase().replace(['-','_',' '], "");
+            let url = format!($url_template, code);
+            let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+            let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+            if body.len() < 500 { return Err(CommandError::scrape_failed(concat!($source, " 无结果"))); }
+            let doc = scraper::Html::parse_document(&body);
+            let title = doc.select(&scraper::Selector::parse("h1, h2, h3, .title, .item-title, title").unwrap()).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
+            let poster = doc.select(&scraper::Selector::parse("img").unwrap()).filter_map(|e| e.attr("src")).find(|s| s.contains("jacket")||s.contains("package")||s.contains("thumb")||s.contains("cover")).map(|s| s.to_string());
+            let actors: Vec<String> = doc.select(&scraper::Selector::parse("a").unwrap()).filter_map(|e| { let h=e.value().attr("href").unwrap_or(""); if h.contains("actress")||h.contains("actor")||h.contains("star")||h.contains("model") { let n=e.text().collect::<String>().trim().to_string(); if n.is_empty() {None} else {Some(n)} } else {None} }).collect();
+            let overview = doc.select(&scraper::Selector::parse("p, .description, .summary").unwrap()).filter_map(|e| { let t=e.text().collect::<String>().trim().to_string(); if t.len()>50 {Some(t)} else {None} }).next();
+            Ok(ScrapeResult { source: $source.into(), title, year: None, poster_url: poster, backdrop_url: None, overview, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 40 })
+        }
+    };
+}
+
+simple_scraper!(scrape_1pondo, "1pondo", "1pondo.tv", "https://www.1pondo.tv/movies/{}/");
+simple_scraper!(scrape_10musume, "10musume", "10musume.com", "https://www.10musume.com/detail/=/cid={}/");
+simple_scraper!(scrape_caribbeancom, "caribbeancom", "caribbeancom.com", "https://www.caribbeancom.com/moviepages/{}/");
+simple_scraper!(scrape_caribbeancompr, "caribbeancompr", "caribbeancompr.com", "https://www.caribbeancompr.com/moviepages/{}/");
+simple_scraper!(scrape_c0930, "c0930", "c0930.com", "https://www.c0930.com/moviepages/{}/");
+simple_scraper!(scrape_gcolle, "gcolle", "gcolle.net", "https://gcolle.net/product_info.php/products_id/{}");
+simple_scraper!(scrape_getchu, "getchu", "getchu.com", "https://dl.getchu.com/item/{}/");
+simple_scraper!(scrape_h0930, "h0930", "h0930.com", "https://www.h0930.com/moviepages/{}/");
+simple_scraper!(scrape_h4610, "h4610", "h4610.com", "https://www.h4610.com/moviepages/{}/");
+simple_scraper!(scrape_heydouga, "heydouga", "heydouga.com", "https://www.heydouga.com/moviepages/{}/");
+simple_scraper!(scrape_heyzo, "heyzo", "heyzo.com", "https://www.heyzo.com/moviepages/{}/");
+simple_scraper!(scrape_javfree, "javfree", "javfree.me", "https://javfree.me/?s={}");
+simple_scraper!(scrape_kin8, "kin8", "kin8tengoku.com", "https://www.kin8tengoku.com/moviepages/{}/");
+simple_scraper!(scrape_muramura, "muramura", "muramura.tv", "https://www.muramura.tv/moviepages/{}/");
+simple_scraper!(scrape_mywife, "mywife", "mywife.cc", "https://mywife.cc/works/{}/");
+simple_scraper!(scrape_pacopacomama, "pacopacomama", "pacopacomama.com", "https://www.pacopacomama.com/moviepages/{}/");
+simple_scraper!(scrape_pcolle, "pcolle", "pcolle.com", "https://www.pcolle.com/product/detail/?id={}");
+simple_scraper!(scrape_fc2hub, "fc2hub", "fc2hub.com", "https://javten.com/search?q={}");
+simple_scraper!(scrape_tokyohot, "tokyohot", "tokyo-hot.com", "https://my.tokyo-hot.com/product/?q={}");
+simple_scraper!(scrape_ave, "ave", "aventertainments.com", "https://www.aventertainments.com/product.aspx?keyword={}");
 
 // ─── MetaTube (local HTTP API) ───
 
