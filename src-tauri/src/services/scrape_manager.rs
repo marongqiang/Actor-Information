@@ -726,46 +726,25 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
         }
         if !actors.is_empty() { break; }
     }
-    // Genres: look for "ジャンル" label, then extract nearby links
+    // Genres: find the "ジャンル：" row, extract space-separated text
     let mut genres: Vec<String> = Vec::new();
-    // First try known selectors
-    for sel_str in &[".genreTag a", "a[href*='article=genre']", "a[href*='/genre/']", ".genre a"] {
-        if let Ok(sel) = scraper::Selector::parse(sel_str) {
-            for g in doc.select(&sel) {
-                let n = g.text().collect::<String>().trim().to_string();
-                if !n.is_empty() && !genres.contains(&n) { genres.push(n); }
-            }
-        }
-        if !genres.is_empty() { break; }
-    }
-    // Fallback: find table row with "ジャンル" and extract its links
-    if genres.is_empty() {
-        if let Ok(sel) = scraper::Selector::parse("tr") {
-            for tr in doc.select(&sel) {
-                let t = tr.text().collect::<String>();
-                if t.contains("ジャンル") || t.contains("ジャンル") {
-                    if let Ok(a_sel) = scraper::Selector::parse("a") {
-                        for a in tr.select(&a_sel) {
-                            let n = a.text().collect::<String>().trim().to_string();
-                            if !n.is_empty() && !genres.contains(&n) { genres.push(n); }
-                        }
+    if let Ok(sel) = scraper::Selector::parse("tr") {
+        for tr in doc.select(&sel) {
+            let t = tr.text().collect::<String>().trim().to_string();
+            if t.starts_with("ジャンル") || t.contains("ジャンル：") {
+                // Extract text after the label, split by whitespace
+                let after = t.split('：').nth(1).unwrap_or(&t);
+                for part in after.split_whitespace() {
+                    let g = part.trim().to_string();
+                    if !g.is_empty() && g.len() <= 15 && !genres.contains(&g)
+                        && !actors.contains(&g) && !g.contains("：") {
+                        genres.push(g);
                     }
-                    break;
                 }
+                break;
             }
         }
     }
-    // Filter out non-genre garbage (prices, nav, admin, actor names, etc.)
-    let noise = ["円", "画像", "レビュー", "サンプル", "梱包", "気に入り", "バスケット",
-        "在庫", "注文", "詳しく", "品切れ", "購入", "比較", "する", "出店",
-        "営業日", "発送", "お届け", "登録済み", "価格", "新品", "中古", "出品"];
-    genres.retain(|g| {
-        if g.len() > 10 { return false; } // too long for a genre
-        if g.chars().any(|c| c.is_ascii_digit()) { return false; } // numbers
-        if noise.iter().any(|w| g.contains(w)) { return false; }
-        if actors.contains(g) { return false; } // actor name, not genre
-        true
-    });
 
     log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} poster={}", title, actors.len(), genres.len(), runtime, year, poster.is_some());
     if title == query.to_string() && actors.is_empty() { return Err(CommandError::scrape_failed("Fanza无结果")); }
