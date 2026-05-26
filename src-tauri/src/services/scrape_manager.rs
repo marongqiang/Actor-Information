@@ -733,7 +733,7 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
             let t = tr.text().collect::<String>().trim().to_string();
             if t.starts_with("ジャンル") || t.contains("ジャンル：") {
                 // Extract text after the label, split by whitespace
-                let after = t.split('：').nth(1).unwrap_or(&t);
+                let after = t.split('：').nth(1).unwrap_or(&t).replace('\u{A0}', " ");
                 for part in after.split_whitespace() {
                     let g = part.trim().to_string();
                     if !g.is_empty() && g.len() <= 15 && !genres.contains(&g)
