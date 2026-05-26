@@ -689,23 +689,33 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     if html.contains("年齢認証") { return Err(CommandError::scrape_failed("Fanza 年龄认证失败")); }
 
     // Rating
-    // Rating: find "平均評価" td, then look for stars or numeric value in the row
+    // Rating: search for score in structured data, meta tags, star images, or hidden spans
     let mut rating: Option<f64> = None;
-    if let Ok(td_sel) = scraper::Selector::parse("td") {
-        let tds: Vec<_> = doc.select(&td_sel).collect();
-        for i in 0..tds.len().saturating_sub(1) {
-            let t = tds[i].text().collect::<String>();
-            if t.contains("平均評価") {
-                // Try next td for numeric text
-                let next = tds[i+1].text().collect::<String>();
-                log::info!("Fanza 平均評価 next td: {}", next.trim());
-                if let Ok(s) = next.trim().parse::<f64>() { rating = Some(s); break; }
-                // Try star images: count ★ or src attributes
-                if let Ok(img_sel) = scraper::Selector::parse("img") {
-                    let stars = tds[i+1].select(&img_sel).count();
-                    if stars >= 1 && stars <= 5 { rating = Some(stars as f64); break; }
+    // Try JSON-LD structured data
+    if let Ok(sel) = scraper::Selector::parse("script[type='application/ld+json']") {
+        for script in doc.select(&sel) {
+            let json_str = script.text().collect::<String>();
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                if let Some(s) = v["aggregateRating"]["ratingValue"].as_f64() { rating = Some(s); break; }
+                if let Some(s) = v["review"]["reviewRating"]["ratingValue"].as_f64() { rating = Some(s); break; }
+            }
+        }
+    }
+    // Fallback: parse any numeric text next to "平均評価" or count star imgs
+    if rating.is_none() {
+        if let Ok(td_sel) = scraper::Selector::parse("td") {
+            let tds: Vec<_> = doc.select(&td_sel).collect();
+            for i in 0..tds.len().saturating_sub(1) {
+                if tds[i].text().collect::<String>().contains("平均評価") {
+                    // Count star icons
+                    if let Ok(img_sel) = scraper::Selector::parse("img") {
+                        let stars = tds[i+1].select(&img_sel).filter(|img| {
+                            img.value().attr("src").map_or(false, |s| s.contains("star") || s.contains("icon"))
+                        }).count();
+                        if stars >= 1 && stars <= 5 { rating = Some(stars as f64); }
+                    }
+                    break;
                 }
-                break;
             }
         }
     }
