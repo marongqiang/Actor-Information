@@ -688,6 +688,10 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     // Check for age verification page
     if html.contains("年齢認証") { return Err(CommandError::scrape_failed("Fanza 年龄认证失败")); }
 
+    // Rating
+    let rating: Option<f64> = doc.select(&scraper::Selector::parse(".d-review__average, .reviewAverage, span[class*='review']").unwrap())
+        .filter_map(|e| e.text().collect::<String>().trim().parse::<f64>().ok())
+        .find(|&s| s > 0.0 && s <= 5.0);
 
     let title = doc.select(&scraper::Selector::parse("h1#title").unwrap()).next()
         .map(|e| e.text().collect::<String>().trim().to_string())
@@ -740,7 +744,7 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} poster={}", title, actors.len(), genres.len(), runtime, year, poster.is_some());
     if title == query.to_string() && actors.is_empty() { return Err(CommandError::scrape_failed("Fanza无结果")); }
 
-    Ok(ScrapeResult { source: "fanza".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 65 })
+    Ok(ScrapeResult { source: "fanza".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 65 })
 }
 
 // ─── Arzon (blocking HTML parse) ───
