@@ -8,3 +8,5 @@ pub mod task_manager;
 pub mod playback_refresher;
 pub mod secure_config;
 pub mod metatube_service;
+pub mod javbus_scraper;
+pub mod jav321_scraper;

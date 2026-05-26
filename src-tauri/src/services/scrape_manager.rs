@@ -71,17 +71,19 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
     let parsed = filename_parser::parse_filename(&file_name);
     let query = parsed.id_number.as_deref().unwrap_or(&parsed.cleaned);
 
-    // Priority order: metatube (covers 39 providers) → others
-    // Sort sources: metatube first, then others
+    // Priority: individual scrapers (JavBus/JAV321) first, MetaTube as fallback
     let mut ordered_sources: Vec<&String> = sources.iter().collect();
-    ordered_sources.sort_by_key(|s| if s.as_str() == "metatube" { 0 } else { 1 });
+    ordered_sources.sort_by_key(|s| match s.as_str() {
+        "javbus" | "jav321" => 0,  // direct scrapers first (reliable data)
+        "metatube" => 1,            // MetaTube as fallback
+        _ => 2,
+    });
 
     let mut results = Vec::new();
-    let mut metatube_done = false; // true if MT succeeded OR MT confirmed no results
+    let mut skip_others = false;
     for source in ordered_sources {
-        // After MetaTube finishes (success or confirmed no-results), skip other sources
-        if metatube_done && source.as_str() != "metatube" {
-            log::debug!("刮削 {}: 跳过(MetaTube已完成)", source);
+        if skip_others && source.as_str() != "javbus" && source.as_str() != "jav321" {
+            log::debug!("刮削 {}: 跳过(关键源已完成)", source);
             continue;
         }
 
@@ -113,14 +115,15 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
         match &r {
             Ok(res) => {
                 log::info!("刮削 {}: 成功, title={}", source, res.title);
-                if source.as_str() == "metatube" { metatube_done = true; }
+                // If javbus or jav321 succeed, skip MetaTube fallback
+                if source.as_str() == "javbus" || source.as_str() == "jav321" { skip_others = true; }
+                if source.as_str() == "metatube" { skip_others = true; }
                 results.push(r.unwrap());
             }
             Err(e) => {
                 log::warn!("刮削 {}: 失败 - {}", source, e);
                 let msg = format!("{}", e);
                 if source.as_str() == "metatube" && (msg.contains("无结果") || msg.contains("未能获取完整信息")) {
-                    metatube_done = true;
                     log::info!("MetaTube确认无结果或信息不全，跳过其余源");
                 }
             },
@@ -456,40 +459,30 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
 // ─── JavBus (blocking HTML parse) ───
 
 fn scrape_javbus(query: &str) -> Result<ScrapeResult, CommandError> {
-    let code = query.to_uppercase().replace(['-', '_', ' '], "");
-    let url = format!("https://www.javbus.com/{}", code);
-    log::info!("JavBus 搜索: url={}", url);
-    let resp = get_client().get(&url).send().map_err(|e| {
-        log::warn!("JavBus HTTP错误: {}", e);
-        CommandError::network(&e.to_string())
-    })?;
-    if !resp.status().is_success() {
-        log::warn!("JavBus HTTP状态: {}", resp.status());
-        return Err(CommandError::scrape_failed(&format!("JavBus未找到 (HTTP {})", resp.status())));
-    }
-    let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&html);
+    let r = crate::services::javbus_scraper::search_javbus(query)?;
+    Ok(ScrapeResult {
+        source: "javbus".into(), title: r.title, year: r.year,
+        poster_url: r.poster_url, backdrop_url: None,
+        overview: r.overview, rating: r.rating, runtime: r.runtime,
+        director: r.director,
+        genre: if r.genres.is_empty() { None } else { Some(r.genres) },
+        actors: if r.actors.is_empty() { None } else { Some(r.actors) },
+        score: 75,
+    })
+}
 
-    let s_title = scraper::Selector::parse("h3").unwrap();
-    let s_cover = scraper::Selector::parse(".bigImage img").unwrap();
-    let s_info = scraper::Selector::parse(".info p").unwrap();
-    let s_actor = scraper::Selector::parse("#star-div a").unwrap();
-    let s_genre = scraper::Selector::parse(".genre a").unwrap();
-
-    let title = doc.select(&s_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
-    let poster = doc.select(&s_cover).next().and_then(|e| e.value().attr("src").map(|s| s.to_string()));
-
-    let mut director = None; let mut year = None; let mut runtime = None;
-    for p in doc.select(&s_info) {
-        let t = p.text().collect::<String>();
-        if t.contains("導演") || t.contains("导演") { director = t.split(':').nth(1).or_else(|| t.split('：').nth(1)).map(|s| s.trim().to_string()); }
-        if t.contains("發行日期") || t.contains("发行日期") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
-        if t.contains("長度") || t.contains("长度") { runtime = t.split_whitespace().last().and_then(|s| s.trim().parse().ok()); }
-    }
-    let actors: Vec<String> = doc.select(&s_actor).filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
-    let genres: Vec<String> = doc.select(&s_genre).filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
-
-    Ok(ScrapeResult { source: "javbus".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 75 })
+// ─── JAV321 (ported from MetaTube Go) ───
+fn scrape_jav321(query: &str) -> Result<ScrapeResult, CommandError> {
+    let r = crate::services::jav321_scraper::search_jav321(query)?;
+    Ok(ScrapeResult {
+        source: "jav321".into(), title: r.title, year: r.year,
+        poster_url: r.poster_url, backdrop_url: None,
+        overview: r.overview, rating: r.rating, runtime: r.runtime,
+        director: None,
+        genre: if r.genres.is_empty() { None } else { Some(r.genres) },
+        actors: if r.actors.is_empty() { None } else { Some(r.actors) },
+        score: 70,
+    })
 }
 
 // ─── JavDB (blocking HTML parse) ───
@@ -829,24 +822,6 @@ fn scrape_airav(query: &str) -> Result<ScrapeResult, CommandError> {
     let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
     let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
     Ok(ScrapeResult { source: "airav".into(), title, year: None, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
-}
-
-// ─── Jav321 ───
-fn scrape_jav321(query: &str) -> Result<ScrapeResult, CommandError> {
-    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
-    let url = format!("https://www.jav321.com/search?keyword={}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    let doc = scraper::Html::parse_document(&body);
-    let sel_title = scraper::Selector::parse(".movie-title, .video-title, h3 a").unwrap();
-    let sel_poster = scraper::Selector::parse(".movie-cover img, img.cover, .thumbnail img").unwrap();
-    let sel_actors = scraper::Selector::parse(".actress-name, .star-name, .actor a").unwrap();
-    let sel_year = scraper::Selector::parse(".release-date, .date, .year").unwrap();
-    let title = doc.select(&sel_title).next().map(|e| e.text().collect::<String>().trim().to_string()).unwrap_or_else(|| query.to_string());
-    let poster = doc.select(&sel_poster).next().and_then(|e| e.attr("src").map(|s| s.to_string()));
-    let actors: Vec<String> = doc.select(&sel_actors).map(|e| e.text().collect::<String>().trim().to_string()).filter(|n| !n.is_empty()).collect();
-    let year = doc.select(&sel_year).next().and_then(|e| e.text().collect::<String>().chars().filter(|c| c.is_ascii_digit()).take(4).collect::<String>().parse().ok());
-    Ok(ScrapeResult { source: "jav321".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime: None, director: None, genre: None, actors: if actors.is_empty() { None } else { Some(actors) }, score: 50 })
 }
 
 // ─── XCITY ───
