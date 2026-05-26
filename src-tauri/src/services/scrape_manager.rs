@@ -725,7 +725,6 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
             let label = tds[i].text().collect::<String>().trim().to_string();
             if label.starts_with("ジャンル") || label == "ジャンル" {
                 let value = tds[i+1].text().collect::<String>().replace('\u{A0}', " ").trim().to_string();
-                log::info!("Fanza ジャンル列: label={} value={}", label, value);
                 for part in value.split_whitespace() {
                     let g = part.trim().to_string();
                     if !g.is_empty() && g.len() <= 15 && !genres.contains(&g)
