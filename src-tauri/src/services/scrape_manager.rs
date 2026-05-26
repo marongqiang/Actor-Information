@@ -61,6 +61,30 @@ fn get_client() -> &'static reqwest::blocking::Client {
     CLIENT.get_or_init(|| build_scrape_client())
 }
 
+/// Client with proxy — for HTML scrapers that access external websites
+fn get_external_client() -> &'static reqwest::blocking::Client {
+    use std::sync::OnceLock;
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        let mut builder = reqwest::blocking::Client::builder()
+            .cookie_store(true)
+            .timeout(std::time::Duration::from_secs(10))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0");
+        if let Ok(Some(enabled)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_enabled")) {
+            if enabled == "true" {
+                if let Ok(Some(host)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_host")) {
+                    let port = db::with_db(|c| crate::db::queries::get_config(c, "proxy_port"))
+                        .ok().flatten().and_then(|p| p.parse().ok()).unwrap_or(1080);
+                    if let Ok(proxy) = reqwest::Proxy::all(&format!("http://{}:{}", host, port)) {
+                        builder = builder.proxy(proxy);
+                    }
+                }
+            }
+        }
+        builder.build().expect("Failed to build external client")
+    })
+}
+
 /// Synchronous scrape - call from spawn_blocking context
 pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult>, CommandError> {
     let file_name = db::with_db(|conn| {
@@ -405,7 +429,7 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
 
     log::info!("TMDB 搜索: query={}", query);
     let url = format!("https://api.themoviedb.org/3/search/movie?api_key={}&query={}&language=zh-CN", api_key, encode(query));
-    let resp = get_client().get(&url).send().map_err(|e| {
+    let resp = get_external_client().get(&url).send().map_err(|e| {
         log::warn!("TMDB HTTP错误: {}", e);
         CommandError::network(&e.to_string())
     })?;
@@ -427,7 +451,7 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let mut actors = Vec::new();
     if tmdb_id > 0 {
         let cu = format!("https://api.themoviedb.org/3/movie/{}/credits?api_key={}&language=zh-CN", tmdb_id, api_key);
-        if let Ok(resp) = get_client().get(&cu).send() {
+        if let Ok(resp) = get_external_client().get(&cu).send() {
             if let Ok(cj) = resp.json::<serde_json::Value>() {
                 if let Some(crew) = cj["crew"].as_array() {
                     for c in crew { if c["job"].as_str() == Some("Director") { director = c["name"].as_str().map(|s| s.to_string()); break; } }
@@ -441,7 +465,7 @@ fn scrape_tmdb(query: &str) -> Result<ScrapeResult, CommandError> {
 
     let genre_names = if !genre_ids.is_empty() {
         let gu = format!("https://api.themoviedb.org/3/genre/movie/list?api_key={}&language=zh-CN", api_key);
-        get_client().get(&gu).send().ok().and_then(|r| r.json::<serde_json::Value>().ok()).and_then(|gj|
+        get_external_client().get(&gu).send().ok().and_then(|r| r.json::<serde_json::Value>().ok()).and_then(|gj|
             gj["genres"].as_array().map(|a| a.iter().filter_map(|g|
                 if genre_ids.contains(&g["id"].as_i64().unwrap_or(0)) { g["name"].as_str().map(|s| s.to_string()) } else { None }
             ).collect())
@@ -485,7 +509,7 @@ fn scrape_jav321(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_javdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://javdb.com/search?q={}&f=all", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("JavDB搜索失败")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -494,7 +518,7 @@ fn scrape_javdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href").map(|s| format!("https://javdb.com{}", s)));
     let detail_url = match detail_url { Some(u) => u, None => return Err(CommandError::scrape_failed("JavDB无结果")) };
 
-    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
 
@@ -521,14 +545,14 @@ fn scrape_javdb(query: &str) -> Result<ScrapeResult, CommandError> {
 
 fn scrape_imdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let url = format!("https://www.imdb.com/find/?q={}", encode(query));
-    let resp = get_client().get(&url).header("Accept-Language", "en-US,en;q=0.9").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).header("Accept-Language", "en-US,en;q=0.9").send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
     let s_item = scraper::Selector::parse(".ipc-metadata-list-summary-item__t a").unwrap();
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
     if detail_url.is_none() { return Err(CommandError::scrape_failed("IMDb无结果")); }
     let detail_url = format!("https://www.imdb.com{}", detail_url.unwrap());
-    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
     let s_title = scraper::Selector::parse("h1").unwrap();
@@ -546,7 +570,7 @@ fn scrape_imdb(query: &str) -> Result<ScrapeResult, CommandError> {
 
 fn scrape_douban(query: &str) -> Result<ScrapeResult, CommandError> {
     let url = format!("https://movie.douban.com/subject_search?search_text={}", encode(query));
-    let resp = get_client().get(&url).header("Accept-Language", "zh-CN,zh;q=0.9").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).header("Accept-Language", "zh-CN,zh;q=0.9").send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("豆瓣不可用")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -554,7 +578,7 @@ fn scrape_douban(query: &str) -> Result<ScrapeResult, CommandError> {
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
     if detail_url.is_none() { return Err(CommandError::scrape_failed("豆瓣无结果")); }
     let detail_url = format!("https://movie.douban.com{}", detail_url.unwrap().split('?').next().unwrap_or(""));
-    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
     let s_title = scraper::Selector::parse("h1 span").unwrap();
@@ -575,7 +599,7 @@ fn scrape_douban(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_javlib(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.javlibrary.com/en/vl_searchbyid.php?keyword={}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("JavLibrary不可用")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -583,7 +607,7 @@ fn scrape_javlib(query: &str) -> Result<ScrapeResult, CommandError> {
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
     if detail_url.is_none() { return Err(CommandError::scrape_failed("JavLibrary无结果")); }
     let detail_url = format!("https://www.javlibrary.com{}", detail_url.unwrap().trim_start_matches('.'));
-    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
     let s_title = scraper::Selector::parse("h3.post-title").unwrap();
@@ -610,7 +634,7 @@ fn scrape_javlib(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.dmm.co.jp/mono/dvd/-/search/=/searchstr={}", encode(&code));
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("Fanza不可用")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -618,7 +642,7 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
     if detail_url.is_none() { return Err(CommandError::scrape_failed("Fanza无结果")); }
     let detail_url = detail_url.unwrap().to_string();
-    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
     let s_title = scraper::Selector::parse("h1#title").unwrap();
@@ -644,7 +668,7 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_arzon(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.arzon.jp/itemlist.html?q={}", encode(&code));
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("Arzon不可用")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -662,7 +686,7 @@ fn scrape_arzon(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_mgstage(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.mgstage.com/search/cSearch.php?search_word={}", encode(&code));
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("MGStage不可用")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -670,7 +694,7 @@ fn scrape_mgstage(query: &str) -> Result<ScrapeResult, CommandError> {
     let detail_url = doc.select(&s_item).next().and_then(|e| e.value().attr("href"));
     if detail_url.is_none() { return Err(CommandError::scrape_failed("MGStage无结果")); }
     let detail_url = detail_url.unwrap().to_string();
-    let resp = get_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&detail_url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
     let s_title = scraper::Selector::parse("h1.tag").unwrap();
@@ -700,7 +724,7 @@ fn scrape_fc2(query: &str) -> Result<ScrapeResult, CommandError> {
         return Err(CommandError::scrape_failed("FC2需要纯数字ID"));
     }
     let url = format!("https://adult.contents.fc2.com/article/{}/", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     if !resp.status().is_success() { return Err(CommandError::scrape_failed("FC2未找到")); }
     let html = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&html);
@@ -747,7 +771,7 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
     log::info!("  timestamp: {}", ts);
     log::info!("JpHoo ══════════════════════════════════════");
 
-    let resp = get_client().get(&url)
+    let resp = get_external_client().get(&url)
         .header("guestid", &guest_id)
         .header("istoken", "true")
         .header("loading", "true")
@@ -807,7 +831,7 @@ fn scrape_jphoo(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_airav(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.airav.wiki/search?q={}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".video-title, .item-title, h2 a").unwrap();
@@ -823,7 +847,7 @@ fn scrape_airav(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_xcity(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.xcity.jp/avod/list/?keyword={}", code);
-    let resp = get_client().get(&url).header("Referer", "https://www.xcity.jp/").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).header("Referer", "https://www.xcity.jp/").send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".itemTitle a, .videoTitle, .titleArea h3").unwrap();
@@ -839,7 +863,7 @@ fn scrape_xcity(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_prestige(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://www.prestige-av.com/goods/goods_list.php?search_word={}", code);
-    let resp = get_client().get(&url).header("Referer", "https://www.prestige-av.com/").send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).header("Referer", "https://www.prestige-av.com/").send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".goods_name, .goods-title, .item-name a").unwrap();
@@ -855,7 +879,7 @@ fn scrape_prestige(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_avsox(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://avsox.cyou/cn/search/{}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".movie-title h3, .video-title, .item-title a").unwrap();
@@ -871,7 +895,7 @@ fn scrape_avsox(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_njav(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://njav.tv/search/{}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".video-title, .movie-title, h2 a, .item-title").unwrap();
@@ -889,7 +913,7 @@ fn scrape_njav(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_getav(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://getav.info/search?keyword={}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".video-title, .movie-title, h3 a, .item-name").unwrap();
@@ -905,7 +929,7 @@ fn scrape_getav(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_whostv(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://whostv.net/search?keyword={}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".video-title, .movie-title, h2 a, .item-title").unwrap();
@@ -921,7 +945,7 @@ fn scrape_whostv(query: &str) -> Result<ScrapeResult, CommandError> {
 fn scrape_fc2ppvdb(query: &str) -> Result<ScrapeResult, CommandError> {
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
     let url = format!("https://fc2ppvdb.com/search?keyword={}", code);
-    let resp = get_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
+    let resp = get_external_client().get(&url).send().map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     let doc = scraper::Html::parse_document(&body);
     let sel_title = scraper::Selector::parse(".video-title, .item-title a, .movie-title, h2").unwrap();
