@@ -57,10 +57,42 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
     log::info!("JavBus 响应: {} bytes, Cloudflare={} AgeVerify={}", body.len(), body.contains("Cloudflare"), body.contains("Age Verification"));
 
+    // Handle age verification page
+    let body = if body.contains("Age Verification") {
+        log::info!("JavBus 年龄验证页面, 查找跳过链接...");
+        let doc = Html::parse_document(&body);
+        // Find the "over18" link or "Enter" button
+        let mut verify_url = None;
+        if let Ok(sel) = Selector::parse("a") {
+            for a in doc.select(&sel) {
+                if let Some(href) = a.value().attr("href") {
+                    let text = a.text().collect::<String>().to_lowercase();
+                    if text.contains("enter") || text.contains("18") || text.contains("over")
+                        || href.contains("over18") || href.contains("age") {
+                        verify_url = Some(if href.starts_with("http") { href.to_string() }
+                            else if href.starts_with('/') { format!("https://www.javbus.com{}", href) }
+                            else { format!("https://www.javbus.com/{}", href) });
+                        log::info!("JavBus 跳过验证: {} -> {}", text.trim(), verify_url.as_ref().unwrap());
+                        break;
+                    }
+                }
+            }
+        }
+        // If no link found, try common over18 URL patterns
+        let verify_url = verify_url.unwrap_or_else(|| format!("{}/?over18=1", detail_url));
+        let resp = client.get(&verify_url)
+            .header("Referer", &detail_url)
+            .header("Cookie", "existmag=all; over18=18")
+            .send()
+            .map_err(|e| CommandError::network(&e.to_string()))?;
+        resp.text().map_err(|e| CommandError::network(&e.to_string()))?
+    } else {
+        body
+    };
+
     if body.len() < 500 || body.contains("Cloudflare") || body.contains("404") {
         return Err(CommandError::scrape_failed("JavBus 无结果"));
     }
-    // Note: "Age Verification" text may appear as an overlay — movie data is still in the page
 
     let doc = Html::parse_document(&body);
 
