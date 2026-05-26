@@ -50,6 +50,7 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     log::info!("JavBus 详情: {}", detail_url);
     let resp = client.get(&detail_url)
         .header("Referer", "https://www.javbus.com/")
+        .header("Accept-Language", "ja-JP,ja;q=0.9")
         .header("Cookie", "existmag=all; over18=18")
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
