@@ -36,18 +36,44 @@ fn build_client() -> reqwest::blocking::Client {
 
 pub fn search_jav321(query: &str) -> Result<Jav321Result, CommandError> {
     let client = build_client();
-    let code = query.trim().to_lowercase().replace(['-', '_', ' '], "");
+    let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
 
-    // JAV321 detail page uses lowercase ID
-    let url = format!("https://www.jav321.com/video/{}", code);
-    log::info!("JAV321 详情: {}", url);
-    let resp = client.get(&url)
+    // JAV321 uses POST /search with sn=CODE → redirect to /video/{id}
+    // Use a client that doesn't follow redirects for the search
+    let no_redirect_client = reqwest::blocking::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0")
+        .build()
+        .map_err(|e| CommandError::network(&e.to_string()))?;
+
+    log::info!("JAV321 搜索: POST /search sn={}", code);
+    let search_resp = no_redirect_client.post("https://www.jav321.com/search")
+        .header("Referer", "https://www.jav321.com/")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(format!("sn={}", code))
+        .send()
+        .map_err(|e| CommandError::network(&e.to_string()))?;
+
+    // Check for redirect to /video/{id}
+    let location = match search_resp.headers().get("location") {
+        Some(loc) => loc.to_str().unwrap_or("").to_string(),
+        None => return Err(CommandError::scrape_failed("JAV321 无结果")),
+    };
+
+    if !location.contains("/video") && !location.contains("/snp") {
+        return Err(CommandError::scrape_failed("JAV321 无匹配"));
+    }
+
+    let detail_url = if location.starts_with("http") { location } else { format!("https://www.jav321.com{}", location) };
+    log::info!("JAV321 详情: {}", detail_url);
+    let resp = client.get(&detail_url)
         .header("Referer", "https://www.jav321.com/")
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
 
-    if body.contains("not found") || body.len() < 500 {
+    if body.len() < 500 {
         return Err(CommandError::scrape_failed("JAV321 无结果"));
     }
 
