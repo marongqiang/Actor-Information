@@ -59,33 +59,43 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
 
     // Handle age verification page
     let body = if body.contains("Age Verification") {
-        log::info!("JavBus 年龄验证页面, 查找跳过链接...");
+        log::info!("JavBus 年龄验证页面, 查找跳过方式...");
         let doc = Html::parse_document(&body);
-        // Find the "over18" link or "Enter" button
         let mut verify_url = None;
+        // Method 1: Find <a> link with "over18", "enter", "age"
         if let Ok(sel) = Selector::parse("a") {
             for a in doc.select(&sel) {
                 if let Some(href) = a.value().attr("href") {
                     let text = a.text().collect::<String>().to_lowercase();
                     if text.contains("enter") || text.contains("18") || text.contains("over")
-                        || href.contains("over18") || href.contains("age") {
+                        || href.contains("over18") || href.contains("age") || text.contains("はい")
+                        || text.contains("yes") || text.contains("agree") || text.contains("同意") {
                         verify_url = Some(if href.starts_with("http") { href.to_string() }
                             else if href.starts_with('/') { format!("https://www.javbus.com{}", href) }
                             else { format!("https://www.javbus.com/{}", href) });
-                        log::info!("JavBus 跳过验证: {} -> {}", text.trim(), verify_url.as_ref().unwrap());
+                        log::info!("JavBus 验证链接: {} -> {}", text.trim(), verify_url.as_ref().unwrap());
                         break;
                     }
                 }
             }
         }
-        // If no link found, try common over18 URL patterns
-        let verify_url = verify_url.unwrap_or_else(|| format!("{}/?over18=1", detail_url));
-        let resp = client.get(&verify_url)
-            .header("Referer", &detail_url)
-            .header("Cookie", "existmag=all; over18=18")
-            .send()
-            .map_err(|e| CommandError::network(&e.to_string()))?;
-        resp.text().map_err(|e| CommandError::network(&e.to_string()))?
+        // Method 2: Detect Cloudflare Turnstile or JS challenge — try a direct bypass
+        if verify_url.is_none() && (body.contains("challenge") || body.contains("cf-")) {
+            log::info!("JavBus Cloudflare挑战, 尝试 /cdn-cgi/ bypass");
+            verify_url = Some(detail_url.clone());
+        }
+        // Follow verification URL, or try direct access with delay
+        if let Some(vu) = verify_url {
+            let resp = client.get(&vu)
+                .header("Referer", &detail_url)
+                .header("Cookie", "existmag=all; over18=18")
+                .send()
+                .map_err(|e| CommandError::network(&e.to_string()))?;
+            resp.text().map_err(|e| CommandError::network(&e.to_string()))?
+        } else {
+            log::warn!("JavBus 未找到验证方式");
+            body // return original body, will be caught by bogus filter
+        }
     } else {
         body
     };
