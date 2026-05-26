@@ -694,17 +694,39 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     let poster = doc.select(&scraper::Selector::parse("#sample-image1 img").unwrap()).next()
         .and_then(|e| e.value().attr("src").map(|s| s.to_string()));
     let mut year = None; let mut runtime = None;
-    if let Ok(sel) = scraper::Selector::parse("table.mg-b20 tr") {
-        for tr in doc.select(&sel) {
-            let t = tr.text().collect::<String>();
-            if t.contains("発売日") || t.contains("配信開始日") { year = t.split_whitespace().last().and_then(|d| d[..4].parse().ok()); }
-            if t.contains("収録時間") { runtime = t.split_whitespace().last().and_then(|s| s.trim().replace("min", "").parse().ok()); }
+    // Try multiple selectors for metadata table
+    for sel_str in &["table.mg-b20 tr", "table tr", ".mg-b20 tr", "tr"] {
+        if let Ok(sel) = scraper::Selector::parse(sel_str) {
+            for tr in doc.select(&sel) {
+                let t = tr.text().collect::<String>();
+                if t.contains("発売日") || t.contains("配信開始日") { year = t.chars().filter(|c| c.is_ascii_digit()).take(4).collect::<String>().parse().ok(); }
+                if t.contains("収録時間") || t.contains("収録") { runtime = t.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().ok(); }
+            }
+            if runtime.is_some() || year.is_some() { break; }
         }
     }
-    let actors: Vec<String> = doc.select(&scraper::Selector::parse("#performer a").unwrap())
-        .filter_map(|a| { let n = a.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
-    let genres: Vec<String> = doc.select(&scraper::Selector::parse(".genreTag a").unwrap())
-        .filter_map(|g| { let n = g.text().collect::<String>().trim().to_string(); if n.is_empty() { None } else { Some(n) } }).collect();
+    // Actors: try multiple selectors
+    let mut actors: Vec<String> = Vec::new();
+    for sel_str in &["#performer a", "a[href*='/actress/']", "a[href*='article=actress']", ".performer a"] {
+        if let Ok(sel) = scraper::Selector::parse(sel_str) {
+            for a in doc.select(&sel) {
+                let n = a.text().collect::<String>().trim().to_string();
+                if !n.is_empty() && !actors.contains(&n) { actors.push(n); }
+            }
+        }
+        if !actors.is_empty() { break; }
+    }
+    // Genres: try multiple selectors
+    let mut genres: Vec<String> = Vec::new();
+    for sel_str in &[".genreTag a", "a[href*='article=genre']", "a[href*='/genre/']", ".genre a"] {
+        if let Ok(sel) = scraper::Selector::parse(sel_str) {
+            for g in doc.select(&sel) {
+                let n = g.text().collect::<String>().trim().to_string();
+                if !n.is_empty() && !genres.contains(&n) { genres.push(n); }
+            }
+        }
+        if !genres.is_empty() { break; }
+    }
 
     log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} poster={}", title, actors.len(), genres.len(), runtime, year, poster.is_some());
     if title == query.to_string() && actors.is_empty() { return Err(CommandError::scrape_failed("Fanza无结果")); }
