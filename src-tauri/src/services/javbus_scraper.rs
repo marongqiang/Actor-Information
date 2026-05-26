@@ -58,7 +58,24 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
         .header("Accept-Language", "ja-JP,ja;q=0.9")
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
-    let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    // Manual redirect handling (like MetaTube's WithDisableRedirects)
+    let status = resp.status();
+    let redirect_url = resp.headers().get("location").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
+    let mut body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    if status.is_redirection() {
+        if let Some(loc) = redirect_url {
+            let loc = if loc.starts_with("http") { loc }
+                else if loc.starts_with('/') { format!("https://www.javbus.com{}", loc) }
+                else { format!("https://www.javbus.com/{}", loc) };
+            log::info!("JavBus 重定向: {}", loc);
+            let r2 = client.get(&loc)
+                .header("Referer", &detail_url)
+                .header("Accept-Language", "ja-JP,ja;q=0.9")
+                .send()
+                .map_err(|e| CommandError::network(&e.to_string()))?;
+            body = r2.text().map_err(|e| CommandError::network(&e.to_string()))?;
+        }
+    }
     log::info!("JavBus 响应: {} bytes, Cloudflare={} AgeVerify={}", body.len(), body.contains("Cloudflare"), body.contains("Age Verification"));
 
     // Handle age verification page
