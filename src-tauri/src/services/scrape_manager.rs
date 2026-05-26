@@ -717,18 +717,19 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
         }
         if !actors.is_empty() { break; }
     }
-    // Genres: find the "ジャンル：" row, extract space-separated text
+    // Genres: find <td> containing "ジャンル", take next <td>'s text
     let mut genres: Vec<String> = Vec::new();
-    if let Ok(sel) = scraper::Selector::parse("tr") {
-        for tr in doc.select(&sel) {
-            let t = tr.text().collect::<String>().trim().to_string();
-            if (t.starts_with("ジャンル") || t.contains("ジャンル：")) && !t.contains("人気") {
-                // Extract text after the label, split by whitespace
-                let after = t.split('：').nth(1).unwrap_or(&t).replace('\u{A0}', " ");
-                for part in after.split_whitespace() {
+    if let Ok(td_sel) = scraper::Selector::parse("td") {
+        let mut tds: Vec<_> = doc.select(&td_sel).collect();
+        for i in 0..tds.len().saturating_sub(1) {
+            let label = tds[i].text().collect::<String>().trim().to_string();
+            if label.starts_with("ジャンル") || label == "ジャンル" {
+                let value = tds[i+1].text().collect::<String>().replace('\u{A0}', " ").trim().to_string();
+                log::info!("Fanza ジャンル列: label={} value={}", label, value);
+                for part in value.split_whitespace() {
                     let g = part.trim().to_string();
                     if !g.is_empty() && g.len() <= 15 && !genres.contains(&g)
-                        && !actors.contains(&g) && !g.contains("：") {
+                        && !actors.contains(&g) {
                         genres.push(g);
                     }
                 }
