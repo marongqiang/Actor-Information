@@ -71,19 +71,16 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
     let parsed = filename_parser::parse_filename(&file_name);
     let query = parsed.id_number.as_deref().unwrap_or(&parsed.cleaned);
 
-    // Priority: individual scrapers (JavBus/JAV321) first, MetaTube as fallback
+    // Priority: MetaTube first (covers 30 sources including JavBus+JAV321)
+    // Individual scrapers only as fallback if MetaTube fails
     let mut ordered_sources: Vec<&String> = sources.iter().collect();
-    ordered_sources.sort_by_key(|s| match s.as_str() {
-        "javbus" | "jav321" => 0,  // direct scrapers first (reliable data)
-        "metatube" => 1,            // MetaTube as fallback
-        _ => 2,
-    });
+    ordered_sources.sort_by_key(|s| if s.as_str() == "metatube" { 0 } else { 1 });
 
     let mut results = Vec::new();
-    let mut skip_others = false;
+    let mut metatube_done = false;
     for source in ordered_sources {
-        if skip_others && source.as_str() != "javbus" && source.as_str() != "jav321" {
-            log::debug!("刮削 {}: 跳过(关键源已完成)", source);
+        if metatube_done && source.as_str() != "metatube" {
+            log::debug!("刮削 {}: 跳过(MetaTube已完成)", source);
             continue;
         }
 
@@ -115,9 +112,7 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
         match &r {
             Ok(res) => {
                 log::info!("刮削 {}: 成功, title={}", source, res.title);
-                // If javbus or jav321 succeed, skip MetaTube fallback
-                if source.as_str() == "javbus" || source.as_str() == "jav321" { skip_others = true; }
-                if source.as_str() == "metatube" { skip_others = true; }
+                if source.as_str() == "metatube" { metatube_done = true; }
                 results.push(r.unwrap());
             }
             Err(e) => {
