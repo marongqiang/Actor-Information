@@ -62,27 +62,32 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
     let status = resp.status();
     let redirect_url = resp.headers().get("location").and_then(|v| v.to_str().ok()).map(|s| s.to_string());
     let mut body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
-    if status.is_redirection() {
-        if let Some(loc) = redirect_url {
-            let loc = if loc.starts_with("http") { loc }
-                else if loc.starts_with('/') { format!("https://www.javbus.com{}", loc) }
-                else { format!("https://www.javbus.com/{}", loc) };
-            log::info!("JavBus 重定向: {}", loc);
-            // Follow the driver-verify page (cookie_store captures verification cookies)
-            let _r2 = client.get(&loc)
-                .header("Referer", &detail_url)
-                .header("Accept-Language", "ja-JP,ja;q=0.9")
-                .send()
-                .map_err(|e| CommandError::network(&e.to_string()))?;
-            // Retry the original detail URL with verification cookies now set
-            log::info!("JavBus 验证后重试: {}", detail_url);
-            let r3 = client.get(&detail_url)
-                .header("Referer", "https://www.javbus.com/")
-                .header("Accept-Language", "ja-JP,ja;q=0.9")
-                .send()
-                .map_err(|e| CommandError::network(&e.to_string()))?;
-            body = r3.text().map_err(|e| CommandError::network(&e.to_string()))?;
-        }
+    // Follow redirects up to 3 times (driver-verify chain)
+    for _ in 0..3 {
+        if status.is_redirection() {
+            if let Some(ref loc) = redirect_url {
+                let loc = if loc.starts_with("http") { loc.clone() }
+                    else if loc.starts_with('/') { format!("https://www.javbus.com{}", loc) }
+                    else { format!("https://www.javbus.com/{}", loc) };
+                log::info!("JavBus 重定向: {}", loc);
+                let r2 = client.get(&loc)
+                    .header("Referer", &detail_url)
+                    .header("Accept-Language", "ja-JP,ja;q=0.9")
+                    .send()
+                    .map_err(|e| CommandError::network(&e.to_string()))?;
+                body = r2.text().map_err(|e| CommandError::network(&e.to_string()))?;
+                // If we were redirected from the detail page, retry it after verification
+                if loc.contains("driver-verify") {
+                    log::info!("JavBus 验证后重试详情");
+                    let r3 = client.get(&detail_url)
+                        .header("Referer", "https://www.javbus.com/")
+                        .header("Accept-Language", "ja-JP,ja;q=0.9")
+                        .send()
+                        .map_err(|e| CommandError::network(&e.to_string()))?;
+                    body = r3.text().map_err(|e| CommandError::network(&e.to_string()))?;
+                }
+            }
+        } else { break; }
     }
     log::info!("JavBus 响应: {} bytes, Cloudflare={} AgeVerify={}", body.len(), body.contains("Cloudflare"), body.contains("Age Verification"));
 
@@ -129,9 +134,7 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
         body
     };
 
-    if body.len() < 500 || body.contains("Cloudflare") || body.contains("404") {
-        return Err(CommandError::scrape_failed("JavBus 无结果"));
-    }
+    if body.len() < 500 || body.contains("Cloudflare") { return Err(CommandError::scrape_failed("JavBus 无结果")); }
 
     let doc = Html::parse_document(&body);
 
