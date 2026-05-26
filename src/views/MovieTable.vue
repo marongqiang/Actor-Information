@@ -173,9 +173,8 @@ async function batchScrape() {
   scrapeOk.value = 0; scrapeFail.value = 0; scrapeTotal.value = ids.length; scrapeDone2.value = 0
 
   // Fire-and-forget: don't await, let it run in background
-  invoke('scrape_batch', { fileIds: ids }).then((result: any) => {
-    scrapeOk.value = result.success; scrapeFail.value = result.failed
-  }).catch((e: any) => {
+  // Progress values come from polling (get_batch_progress), not from the final result
+  invoke('scrape_batch', { fileIds: ids }).catch((e: any) => {
     ElMessage.error('刮削失败: ' + (e?.message || e))
   })
 
