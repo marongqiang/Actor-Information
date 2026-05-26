@@ -689,15 +689,24 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     if html.contains("年齢認証") { return Err(CommandError::scrape_failed("Fanza 年龄认证失败")); }
 
     // Rating
+    // Rating: find "平均評価" td, then look for stars or numeric value in the row
     let mut rating: Option<f64> = None;
-    for sel_str in &[".d-review__average", ".reviewAverage", "span[class*='review']", "td[class*='review']", ".d-review__point"] {
-        if let Ok(sel) = scraper::Selector::parse(sel_str) {
-            rating = doc.select(&sel).filter_map(|e| {
-                let t = e.text().collect::<String>().trim().to_string();
-                log::info!("Fanza rating try: selector={} text={}", sel_str, t);
-                t.parse::<f64>().ok()
-            }).find(|&s| s > 0.0 && s <= 5.0);
-            if rating.is_some() { break; }
+    if let Ok(td_sel) = scraper::Selector::parse("td") {
+        let tds: Vec<_> = doc.select(&td_sel).collect();
+        for i in 0..tds.len().saturating_sub(1) {
+            let t = tds[i].text().collect::<String>();
+            if t.contains("平均評価") {
+                // Try next td for numeric text
+                let next = tds[i+1].text().collect::<String>();
+                log::info!("Fanza 平均評価 next td: {}", next.trim());
+                if let Ok(s) = next.trim().parse::<f64>() { rating = Some(s); break; }
+                // Try star images: count ★ or src attributes
+                if let Ok(img_sel) = scraper::Selector::parse("img") {
+                    let stars = tds[i+1].select(&img_sel).count();
+                    if stars >= 1 && stars <= 5 { rating = Some(stars as f64); break; }
+                }
+                break;
+            }
         }
     }
 
