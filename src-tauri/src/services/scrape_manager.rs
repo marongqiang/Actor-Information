@@ -138,6 +138,13 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
         };
         match &r {
             Ok(res) => {
+                // Check if it's actually a 404/error page
+                let is_bogus = res.title.contains("見つかりません") || res.title.contains("Service Unavailable")
+                    || res.title.contains("Not Found") || res.title.contains("404");
+                if is_bogus {
+                    log::warn!("刮削 {}: 返回错误页面, 忽略", source);
+                    continue;
+                }
                 log::info!("刮削 {}: 成功, title={}", source, res.title);
                 // If individual scraper returned good data (actors+genres), skip MetaTube
                 if source.as_str() != "metatube" && res.actors.is_some() && !res.actors.as_ref().map_or(true, |a| a.is_empty()) {
