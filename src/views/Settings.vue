@@ -304,6 +304,10 @@ const sourceTable = reactive([
   { key: 'whostv', name: 'WhosTV', site: 'whostv.net', type: 'AV', done: true, remark: '', defaultRemark: '可能需代理' },
   { key: 'jphoo', name: 'JpHoo', site: 'www.jphoo1.com', type: 'AV', done: true, remark: '', defaultRemark: '需配置secret/refreshtoken/guestid' },
   { key: 'fc2ppvdb', name: 'FC2PPVDB', site: 'fc2ppvdb.com', type: 'AV', done: true, remark: '', defaultRemark: '需代理访问' },
+  { key: 'faleno', name: 'FALENO', site: 'faleno.jp', type: 'AV', done: true, remark: '', defaultRemark: '' },
+  { key: 'duga', name: 'DUGA', site: 'duga.jp', type: 'AV', done: true, remark: '', defaultRemark: '时长不准,仅作补充' },
+  { key: 'sod', name: 'SOD', site: 'ec.sod.co.jp', type: 'AV', done: true, remark: '', defaultRemark: '' },
+  { key: 'dahlia', name: 'DAHLIA', site: 'dahlia-av.jp', type: 'AV', done: true, remark: '', defaultRemark: '' },
   { key: 'metatube', name: 'MetaTube', site: '39个社区提供器', type: '聚合', done: true, remark: '', defaultRemark: '需在常规页启动MetaTube服务' },
   { key: 'deepseek', name: 'DeepSeek', site: 'api.deepseek.com', type: '翻译', done: true, remark: '', defaultRemark: '用于翻译片名，需API Key' },
 ])
