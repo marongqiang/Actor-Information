@@ -688,6 +688,16 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     // Check for age verification page
     if html.contains("年齢認証") { return Err(CommandError::scrape_failed("Fanza 年龄认证失败")); }
 
+    // Dump all <tr> contents for debugging
+    if let Ok(sel) = scraper::Selector::parse("tr") {
+        for (i, tr) in doc.select(&sel).enumerate() {
+            let t = tr.text().collect::<String>().trim().replace('\n', " | ").to_string();
+            if t.len() > 5 && t.len() < 300 {
+                log::info!("Fanza tr[{}]: {}", i, t);
+            }
+        }
+    }
+
     let title = doc.select(&scraper::Selector::parse("h1#title").unwrap()).next()
         .map(|e| e.text().collect::<String>().trim().to_string())
         .unwrap_or_else(|| query.to_string());
