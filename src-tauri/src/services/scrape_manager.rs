@@ -95,16 +95,15 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
     let parsed = filename_parser::parse_filename(&file_name);
     let query = parsed.id_number.as_deref().unwrap_or(&parsed.cleaned);
 
-    // Priority: MetaTube first (covers 30 sources including JavBus+JAV321)
-    // Individual scrapers only as fallback if MetaTube fails
+    // Priority: individual scrapers first, MetaTube as fallback
     let mut ordered_sources: Vec<&String> = sources.iter().collect();
-    ordered_sources.sort_by_key(|s| if s.as_str() == "metatube" { 0 } else { 1 });
+    ordered_sources.sort_by_key(|s| if s.as_str() == "metatube" { 2 } else { 0 });
 
     let mut results = Vec::new();
-    let mut metatube_done = false;
+    let mut got_good_data = false;
     for source in ordered_sources {
-        if metatube_done && source.as_str() != "metatube" {
-            log::debug!("刮削 {}: 跳过(MetaTube已完成)", source);
+        if got_good_data && source.as_str() == "metatube" {
+            log::debug!("刮削 {}: 跳过(独立刮削器已完成)", source);
             continue;
         }
 
@@ -136,15 +135,16 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
         match &r {
             Ok(res) => {
                 log::info!("刮削 {}: 成功, title={}", source, res.title);
-                if source.as_str() == "metatube" { metatube_done = true; }
+                // If individual scraper returned good data (actors+genres), skip MetaTube
+                if source.as_str() != "metatube" && res.actors.is_some() && !res.actors.as_ref().map_or(true, |a| a.is_empty()) {
+                    got_good_data = true;
+                    log::info!("独立刮削器 {} 返回完整数据, 跳过MetaTube", source);
+                }
+                if source.as_str() == "metatube" { got_good_data = true; }
                 results.push(r.unwrap());
             }
             Err(e) => {
                 log::warn!("刮削 {}: 失败 - {}", source, e);
-                let msg = format!("{}", e);
-                if source.as_str() == "metatube" && (msg.contains("无结果") || msg.contains("未能获取完整信息")) {
-                    log::info!("MetaTube确认无结果或信息不全，跳过其余源");
-                }
             },
         }
     }
