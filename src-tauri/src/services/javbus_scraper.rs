@@ -68,12 +68,20 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
                 else if loc.starts_with('/') { format!("https://www.javbus.com{}", loc) }
                 else { format!("https://www.javbus.com/{}", loc) };
             log::info!("JavBus 重定向: {}", loc);
-            let r2 = client.get(&loc)
+            // Follow the driver-verify page (cookie_store captures verification cookies)
+            let _r2 = client.get(&loc)
                 .header("Referer", &detail_url)
                 .header("Accept-Language", "ja-JP,ja;q=0.9")
                 .send()
                 .map_err(|e| CommandError::network(&e.to_string()))?;
-            body = r2.text().map_err(|e| CommandError::network(&e.to_string()))?;
+            // Retry the original detail URL with verification cookies now set
+            log::info!("JavBus 验证后重试: {}", detail_url);
+            let r3 = client.get(&detail_url)
+                .header("Referer", "https://www.javbus.com/")
+                .header("Accept-Language", "ja-JP,ja;q=0.9")
+                .send()
+                .map_err(|e| CommandError::network(&e.to_string()))?;
+            body = r3.text().map_err(|e| CommandError::network(&e.to_string()))?;
         }
     }
     log::info!("JavBus 响应: {} bytes, Cloudflare={} AgeVerify={}", body.len(), body.contains("Cloudflare"), body.contains("Age Verification"));
