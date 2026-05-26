@@ -1042,17 +1042,12 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                     if let Ok(json2) = serde_json::from_str::<serde_json::Value>(&body2) {
                         if json2["error"]["message"].is_null() {
                             let info = &json2["data"];
-                            let sum_len = info["summary"].as_str().map_or(0, |s| s.len());
                             let rt = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()).unwrap_or(0);
                             let ac = info["actors"].as_array().map_or(0, |a| a.len());
                             let gc = info["genres"].as_array().map_or(0, |g| g.len());
                             let has_cover = info["big_cover_url"].as_str().or(info["cover_url"].as_str()).is_some();
 
-                            // Apply contributions
-                            if let Some(s) = info["summary"].as_str() {
-                                let cur_len = best_overview.as_ref().map(|o: &String| o.len()).unwrap_or(0);
-                                if s.len() > cur_len { best_overview = Some(s.to_string()); contributed.push("简介"); }
-                            }
+                            // Apply contributions (skip overview — MetaTube data is unreliable)
                             let rt = normalize_runtime(rt);
                             // Only trust FANZA, JavBus, JAV321 for runtime. DUGA returns fake values (300, 295, 971)
                             let is_reliable = matches!(provider_name, "FANZA" | "JavBus" | "JAV321");
@@ -1073,8 +1068,8 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                             if best_rating.is_none() { if let Some(s) = info["score"].as_f64() { best_rating = Some(s); contributed.push("评分"); } }
 
                             let contrib_str = if contributed.is_empty() {"无新贡献".to_string()} else {format!("贡献: {}", contributed.join(","))};
-                            log::info!("  {:>2}. {:<20} │ 演员={} 类型={} 时长={} 简介={}B 封面={} │ {}",
-                                idx+1, provider_name, ac, gc, rt, sum_len, if has_cover {"有"} else {"无"}, contrib_str);
+                            log::info!("  {:>2}. {:<20} │ 演员={} 类型={} 时长={} 封面={} │ {}",
+                                idx+1, provider_name, ac, gc, rt, if has_cover {"有"} else {"无"}, contrib_str);
                             if !contributed.is_empty() { sources_used.push(provider_name.to_string()); }
                         } else {
                             log::info!("  {:>2}. {:<20} │ API返回错误", idx+1, provider_name);
@@ -1107,11 +1102,6 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
                             if json["error"]["message"].is_null() {
                                 let info = &json["data"];
-                                if let Some(s) = info["summary"].as_str() {
-                                    if s.len() > best_overview.as_ref().map_or(0, |o: &String| o.len()) {
-                                        best_overview = Some(s.to_string());
-                                    }
-                                }
                                 if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) {
                                     let r = normalize_runtime(r);
                                     let is_reliable = matches!(fb_name, "FANZA" | "JAV321" | "MGS");
