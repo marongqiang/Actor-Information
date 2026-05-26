@@ -188,7 +188,22 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
             },
         }
     }
-    results.sort_by(|a, b| b.score.cmp(&a.score));
+    // Sort by data completeness, not just score
+    results.sort_by(|a, b| {
+        let completeness = |r: &ScrapeResult| -> usize {
+            let mut c = 0usize;
+            if r.actors.is_some() { c += 1; }
+            if r.genre.is_some() { c += 1; }
+            if r.runtime.is_some() { c += 1; }
+            if r.poster_url.is_some() { c += 1; }
+            if r.year.is_some() { c += 1; }
+            if r.overview.is_some() { c += 1; }
+            c
+        };
+        let ca = completeness(a);
+        let cb = completeness(b);
+        cb.cmp(&ca).then(b.score.cmp(&a.score))
+    });
     Ok(results)
 }
 
@@ -730,7 +745,9 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
                 let value = tds[i+1].text().collect::<String>().replace('\u{A0}', " ").trim().to_string();
                 for part in value.split_whitespace() {
                     let g = part.trim().to_string();
+                    // Exclude label text, numbers, and known non-genre words
                     if !g.is_empty() && g.len() <= 15 && !genres.contains(&g)
+                        && g != "ジャンル" && g != "ジャンル：" && !g.contains("ジャンル")
                         && !actors.contains(&g) {
                         genres.push(g);
                     }
