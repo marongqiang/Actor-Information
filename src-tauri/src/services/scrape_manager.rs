@@ -163,6 +163,7 @@ pub fn scrape_file(file_id: &str, sources: &[String]) -> Result<Vec<ScrapeResult
                     || res.title.contains("Not Found") || res.title.contains("404")
                     || res.title.contains("Search Results") || res.title.contains("エラー")
                     || res.title.contains("全動画") || res.title.contains("JAVten")
+                    || res.title.contains("Age Verification")
                     || res.title.contains("セレブ") || res.title.contains("AVエンターテインメント")
                     || res.title.len() < 4;
                 if is_bogus {
