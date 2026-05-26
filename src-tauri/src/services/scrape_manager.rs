@@ -705,8 +705,6 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
     if html.contains("年齢認証") { return Err(CommandError::scrape_failed("Fanza 年龄认证失败")); }
 
     // Rating
-    // Rating not available in DMM HTML (JS-rendered)
-
     let title = doc.select(&scraper::Selector::parse("h1#title").unwrap()).next()
         .map(|e| e.text().collect::<String>().trim().to_string())
         .unwrap_or_else(|| query.to_string());
@@ -757,10 +755,31 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
         }
     }
 
-    log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} poster={}", title, actors.len(), genres.len(), runtime, year, poster.is_some());
+    // Try DMM GraphQL API for rating + richer data (JSON, not HTML)
+    let mut rating: Option<f64> = None;
+    let graphql_url = "https://api.video.dmm.co.jp/graphql";
+    let gql_query = r#"query($id:ID!,$isAv:Boolean!){ppvContent(id:$id){duration actresses{id name imageUrl}genres{id name}maker{name}label{name}deliveryStartDate}reviewSummary(contentId:$id){average}}"#;
+    let gql_body = serde_json::json!({"query": gql_query, "variables": {"id": code_lower, "isAv": true}});
+    if let Ok(resp) = get_external_client().post(graphql_url)
+        .header("Referer", "https://video.dmm.co.jp/")
+        .header("Fanza-Device", "BROWSER")
+        .header("Content-Type", "application/json")
+        .json(&gql_body).send()
+    {
+        if let Ok(json) = resp.json::<serde_json::Value>() {
+            let d = &json["data"]["ppvContent"];
+            rating = json["data"]["reviewSummary"]["average"].as_f64();
+            if runtime.is_none() { runtime = d["duration"].as_i64().map(|v| (v / 60) as i32); }
+            if actors.is_empty() { if let Some(a) = d["actresses"].as_array() { for x in a { if let Some(n) = x["name"].as_str() { actors.push(n.to_string()); } } } }
+            if genres.is_empty() { if let Some(a) = d["genres"].as_array() { for x in a { if let Some(n) = x["name"].as_str() { genres.push(n.to_string()); } } } }
+            log::info!("Fanza GraphQL: rating={:?} runtime={:?} actors={} genres={}", rating, runtime, actors.len(), genres.len());
+        }
+    }
+
+    log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} rating={:?} poster={}", title, actors.len(), genres.len(), runtime, year, rating, poster.is_some());
     if title == query.to_string() && actors.is_empty() { return Err(CommandError::scrape_failed("Fanza无结果")); }
 
-    Ok(ScrapeResult { source: "fanza".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating: None, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 65 })
+    Ok(ScrapeResult { source: "fanza".into(), title, year, poster_url: poster, backdrop_url: None, overview: None, rating, runtime, director: None, genre: if genres.is_empty() { None } else { Some(genres) }, actors: if actors.is_empty() { None } else { Some(actors) }, score: 65 })
 }
 
 // ─── Arzon (blocking HTML parse) ───
