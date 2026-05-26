@@ -716,8 +716,9 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
         }
         if !actors.is_empty() { break; }
     }
-    // Genres: try multiple selectors
+    // Genres: look for "ジャンル" label, then extract nearby links
     let mut genres: Vec<String> = Vec::new();
+    // First try known selectors
     for sel_str in &[".genreTag a", "a[href*='article=genre']", "a[href*='/genre/']", ".genre a"] {
         if let Ok(sel) = scraper::Selector::parse(sel_str) {
             for g in doc.select(&sel) {
@@ -726,6 +727,23 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
             }
         }
         if !genres.is_empty() { break; }
+    }
+    // Fallback: find table row with "ジャンル" and extract its links
+    if genres.is_empty() {
+        if let Ok(sel) = scraper::Selector::parse("tr") {
+            for tr in doc.select(&sel) {
+                let t = tr.text().collect::<String>();
+                if t.contains("ジャンル") || t.contains("ジャンル") {
+                    if let Ok(a_sel) = scraper::Selector::parse("a") {
+                        for a in tr.select(&a_sel) {
+                            let n = a.text().collect::<String>().trim().to_string();
+                            if !n.is_empty() && !genres.contains(&n) { genres.push(n); }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} poster={}", title, actors.len(), genres.len(), runtime, year, poster.is_some());
