@@ -38,14 +38,23 @@ pub fn search_jav321(query: &str) -> Result<Jav321Result, CommandError> {
     let client = build_client();
     let code = query.trim().to_uppercase().replace(['-', '_', ' '], "");
 
-    // JAV321 uses POST /search with sn=CODE → redirect to /video/{id}
-    // Use a client that doesn't follow redirects for the search
-    let no_redirect_client = reqwest::blocking::Client::builder()
+    // Use client with no redirects + proxy for the search POST
+    let mut nr_builder = reqwest::blocking::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0")
-        .build()
-        .map_err(|e| CommandError::network(&e.to_string()))?;
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0");
+    if let Ok(Some(enabled)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_enabled")) {
+        if enabled == "true" {
+            if let Ok(Some(host)) = db::with_db(|c| crate::db::queries::get_config(c, "proxy_host")) {
+                let port = db::with_db(|c| crate::db::queries::get_config(c, "proxy_port"))
+                    .ok().flatten().and_then(|p| p.parse().ok()).unwrap_or(1080);
+                if let Ok(proxy) = reqwest::Proxy::all(&format!("http://{}:{}", host, port)) {
+                    nr_builder = nr_builder.proxy(proxy);
+                }
+            }
+        }
+    }
+    let no_redirect_client = nr_builder.build().map_err(|e| CommandError::network(&e.to_string()))?;
 
     log::info!("JAV321 搜索: POST /search sn={}", code);
     let search_resp = no_redirect_client.post("https://www.jav321.com/search")

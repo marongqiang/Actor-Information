@@ -49,6 +49,10 @@ pub fn search_javbus(query: &str) -> Result<JavBusResult, CommandError> {
         .send()
         .map_err(|e| CommandError::network(&e.to_string()))?;
     let body = resp.text().map_err(|e| CommandError::network(&e.to_string()))?;
+    log::info!("JavBus 搜索响应: {} bytes, Cloudflare={}", body.len(), body.contains("Cloudflare") || body.contains("cf-challenge"));
+    if body.len() < 500 || body.contains("Cloudflare") {
+        log::warn!("JavBus 被拦截或响应异常, 前200字: {}", &body[..body.len().min(200)]);
+    }
     let doc = Html::parse_document(&body);
 
     // Find first movie-box link
