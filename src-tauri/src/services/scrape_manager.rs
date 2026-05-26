@@ -745,6 +745,17 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
             }
         }
     }
+    // Filter out non-genre garbage (prices, nav, admin, actor names, etc.)
+    let noise = ["円", "画像", "レビュー", "サンプル", "梱包", "気に入り", "バスケット",
+        "在庫", "注文", "詳しく", "品切れ", "購入", "比較", "する", "出店",
+        "営業日", "発送", "お届け", "登録済み", "価格", "新品", "中古", "出品"];
+    genres.retain(|g| {
+        if g.len() > 10 { return false; } // too long for a genre
+        if g.chars().any(|c| c.is_ascii_digit()) { return false; } // numbers
+        if noise.iter().any(|w| g.contains(w)) { return false; }
+        if actors.contains(g) { return false; } // actor name, not genre
+        true
+    });
 
     log::info!("Fanza 解析: title={} actors={} genres={} runtime={:?} year={:?} poster={}", title, actors.len(), genres.len(), runtime, year, poster.is_some());
     if title == query.to_string() && actors.is_empty() { return Err(CommandError::scrape_failed("Fanza无结果")); }
