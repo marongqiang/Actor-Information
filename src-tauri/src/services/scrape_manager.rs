@@ -362,7 +362,6 @@ fn translate_via_deepseek(text: &str, api_key: &str) -> Option<String> {
             {"role": "system", "content": "你是日本AV影片片名本地化翻译专家。将用户输入的日文片名改写成简体中文。\n\n规则：\n1. 完全按中文母语者阅读习惯改写，不要保留日语句式（如'被放置'、'てしまう'等）。\n2. 语序改为中文叙事顺序，通常先说结果或主视角动作（如'发现……'、'妻子被……'）。\n3. 使用AV标题常用中文词汇：'丈夫'或'家暴男'、'人妻'、'全裸'、'鬼鬼祟祟'、'视而不见'。\n4. 保留原文的感叹号、问号、省略号，强化冲击力和悬念感。\n5. 不要直译，不要出现过多'～了'，不要有日语腔。\n\n只返回翻译结果，不要任何解释或评价。"},
             {"role": "user", "content": text}
         ],
-        "max_tokens": 200,
         "temperature": 0.3
     });
     match client.post("https://api.deepseek.com/v1/chat/completions")
@@ -1006,7 +1005,6 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
     let mut best_rating: Option<f64> = None;
     let mut best_overview = None;
     let mut best_runtime = None;
-    let mut runtime_source = ""; // Track which provider gave the runtime
     let mut all_actors: Vec<String> = Vec::new();
     let mut all_genres: Vec<String> = Vec::new();
     let mut sources_used: Vec<String> = Vec::new();
@@ -1056,13 +1054,10 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                                 if s.len() > cur_len { best_overview = Some(s.to_string()); contributed.push("简介"); }
                             }
                             let rt = normalize_runtime(rt);
-                            // DUGA often returns placeholder values (300, 295, 299) — only trust if we have nothing else
-                            let is_duga = provider_name == "DUGA";
-                            let trust = if is_duga { 0 } else { 1 }; // FANZA/JavBus > DUGA
-                            let cur_trust = if runtime_source == "DUGA" { 0 } else { 1 };
-                            if rt >= 30 && rt <= 300 && (best_runtime.is_none() || trust > cur_trust || (trust >= cur_trust && rt > best_runtime.unwrap_or(0) as i64)) {
+                            // Only trust FANZA, JavBus, JAV321 for runtime. DUGA returns fake values (300, 295, 971)
+                            let is_reliable = matches!(provider_name, "FANZA" | "JavBus" | "JAV321");
+                            if is_reliable && rt >= 30 && rt <= 300 && rt > best_runtime.unwrap_or(0) as i64 {
                                 best_runtime = Some(rt as i32);
-                                runtime_source = provider_name;
                                 contributed.push("时长");
                             }
                             if let Some(arr) = info["actors"].as_array() {
@@ -1119,10 +1114,9 @@ fn scrape_metatube(query: &str) -> Result<ScrapeResult, CommandError> {
                                 }
                                 if let Some(r) = info["runtime"].as_i64().or_else(|| info["duration"].as_i64()) {
                                     let r = normalize_runtime(r);
-                                    let is_duga = fb_name == "DUGA";
-                                    let cur_trust = if runtime_source == "DUGA" { 0 } else { 1 };
-                                    if r >= 30 && r <= 300 && (best_runtime.is_none() || (!is_duga && cur_trust == 0)) {
-                                        best_runtime = Some(r as i32); runtime_source = fb_name;
+                                    let is_reliable = matches!(fb_name, "FANZA" | "JAV321" | "MGS");
+                                    if is_reliable && r >= 30 && r <= 300 && r > best_runtime.unwrap_or(0) as i64 {
+                                        best_runtime = Some(r as i32);
                                     }
                                 }
                                 if let Some(arr) = info["actors"].as_array() {
