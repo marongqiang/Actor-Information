@@ -238,7 +238,7 @@ fn auto_translate_overview(file_id: &str, overview: &str) {
                     rusqlite::params![cn, file_id])?;
                 Ok(())
             });
-            log::info!("简介翻译完成: {}... -> {}...", &overview[..overview.len().min(30)], &cn[..cn.len().min(30)]);
+            log::info!("简介翻译完成: {}... -> {}...", truncate_log(overview, 30), truncate_log(&cn, 30));
         }
     }
 }
