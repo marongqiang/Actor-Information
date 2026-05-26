@@ -776,6 +776,7 @@ fn scrape_fanza(query: &str) -> Result<ScrapeResult, CommandError> {
         if let Ok(json) = resp.json::<serde_json::Value>() {
             let d = &json["data"]["ppvContent"];
             rating = json["data"]["reviewSummary"]["average"].as_f64();
+            log::info!("Fanza GraphQL raw rating: {:?}", json["data"]["reviewSummary"]);
             if runtime.is_none() { runtime = d["duration"].as_i64().map(|v| (v / 60) as i32); }
             if actors.is_empty() { if let Some(a) = d["actresses"].as_array() { for x in a { if let Some(n) = x["name"].as_str() { actors.push(n.to_string()); } } } }
             if genres.is_empty() { if let Some(a) = d["genres"].as_array() { for x in a { if let Some(n) = x["name"].as_str() { genres.push(n.to_string()); } } } }
